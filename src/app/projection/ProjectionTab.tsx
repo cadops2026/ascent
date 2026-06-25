@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ComposedChart, Area, Line, XAxis, YAxis, ResponsiveContainer } from 'recharts'
 import { supabase } from '../../lib/supabase'
 import { Panel, Figure, MicroLabel, Field, Input } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
-import { fmtMoneyCompact, fmtPct } from '../../lib/format'
+import { WealthPathChart } from './WealthPathChart'
+import { fmtPct } from '../../lib/format'
 import { computeBalanceSheet } from '../../lib/finance/networth'
 import { buildCma } from '../../lib/finance/cma'
 import { buildInflationCurve } from '../../lib/finance/inflation'
@@ -161,23 +161,7 @@ export function ProjectionTab() {
 
           {/* Percentile-band wealth path */}
           <Panel label="Wealth path — real dollars, P10–P90 band">
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 4, left: 8 }}>
-                  <XAxis dataKey="age" stroke="var(--color-faint)" tick={{ fontSize: 11 }} tickLine={false} />
-                  <YAxis
-                    stroke="var(--color-faint)"
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    width={52}
-                    tickFormatter={(v: number) => fmtMoneyCompact(v)}
-                  />
-                  <Area dataKey="lo" stackId="band" stroke="none" fill="transparent" isAnimationActive={false} />
-                  <Area dataKey="span" stackId="band" stroke="none" fill="var(--color-indigo-soft)" isAnimationActive={false} />
-                  <Line dataKey="p50" stroke="var(--color-teal)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+            <WealthPathChart data={chartData} />
           </Panel>
 
           {/* Scenario terminals */}
