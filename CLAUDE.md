@@ -14,6 +14,21 @@ trade feed. The spine: *measure exposure, steer toward intent, stay calm.*
 This file is the summary; the spec is the canonical detail (12 invariants, shared engines, 8 tabs,
 data model, Edge Functions, design system, P0→P8 plan).
 
+## Separation from Jamzli (HARD RULE — never violate)
+
+**ASCENT is a standalone project, completely separate from Jamzli. Never commingle the two.**
+
+- **No Jamzli references** anywhere in this repo — code, docs, comments, commit messages, config,
+  `.claude/` settings, env files. ASCENT stands alone; Jamzli is a *holding the user owns*, modeled
+  generically as "private/founder equity," never named here.
+- **Separate infrastructure, no sharing.** The GitHub repo, Supabase project, API keys/secrets, env,
+  and any accounts must be ASCENT-dedicated — never owned by, shared with, or pointing at Jamzli
+  resources or directories (e.g. no permissions or paths referencing `…/Jamzli`).
+- **If only a Jamzli-owned resource is available** (account, project, key), **stop and ask** for an
+  ASCENT-dedicated one rather than reusing Jamzli's. Don't default to Jamzli for convenience.
+- Known follow-up: the GitHub repo currently sits under the `Jamzli` user account — it must be
+  transferred to an ASCENT-dedicated owner (pending a target from the user).
+
 ## Stack (locked — ask before deviating)
 
 - **Frontend:** React + Vite + TypeScript (strict) + Tailwind. Charts: Recharts. Web only unless

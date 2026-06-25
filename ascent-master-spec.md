@@ -44,7 +44,7 @@ not advice; not a trade feed.** The spine: *measure exposure, steer toward inten
 
 ## 2. Shared engines
 - **Balance sheet** — all assets/liabilities: linked + manual; public securities, crypto, real
-  estate, private/founder equity (Cadence/Jamzli), collectibles, cash; mortgages and other debt;
+  estate, private/founder equity (founder stakes), collectibles, cash; mortgages and other debt;
   unfunded capital commitments as liabilities. Feeds every other module.
 - **Consensus-CMA engine** — forward expected returns per asset class blended across Vanguard /
   J.P. Morgan / Invesco / BlackRock / Morgan Stanley, with visible dispersion; two-stage path

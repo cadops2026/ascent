@@ -254,8 +254,8 @@ Balance Sheet; manual entry stays as fallback.
   uploads succeed but parsing returns an error row (handled gracefully, with Retry).
 - **Not yet runtime-tested** (no API key during the build); types + build + UI render verified.
 
-Project: **Ascent Financial** (ref `rhpdjuigivbwfvzoljsa`, East US Ohio, dedicated org separate from
-Jamzli). Linked via CLI; `.env.local` written with the live URL + anon key.
+Project: **Ascent Financial** (ref `rhpdjuigivbwfvzoljsa`, East US Ohio, dedicated ASCENT org).
+Linked via CLI; `.env.local` written with the live URL + anon key.
 
 ## P1 — Balance Sheet (DONE)
 
@@ -371,7 +371,7 @@ the user — magic-link sign-in path is complete. **P0 is fully closed.**
   (one-line change). Tell me your preference before P1.
 - **Account-type tag set:** I seeded a HNW-flavored `tax_type` list (taxable, trad/roth 401k & IRA,
   hsa, sep, solo401k, 529, cash_balance_db, trust, other). Flag any missing.
-- **One Supabase project vs. shared with Jamzli:** I assumed a **dedicated** ASCENT project. Confirm.
+- **Supabase project:** a **dedicated** ASCENT project (standalone — never shared with any other project).
 
 ## Forward decisions
 
