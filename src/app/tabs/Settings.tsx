@@ -5,6 +5,7 @@ import { PageHeader } from './PhasePlaceholder'
 import { supabaseConfigured, env } from '../../lib/env'
 import { useAuth } from '../../auth/AuthProvider'
 import { exportUserData, deleteAllUserData } from '../../lib/userData'
+import { TaxParamsEditor } from '../tax/TaxParamsEditor'
 
 function Row({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'teal' | 'amber' }) {
   const toneClass = tone === 'teal' ? 'text-teal' : tone === 'amber' ? 'text-amber' : 'text-ink'
@@ -35,12 +36,9 @@ export function Settings() {
         </p>
       </Panel>
 
-      <Panel label="Assumptions" className="mt-5">
-        <p className="text-sm text-muted">
-          Inflation curve, consensus CMA, and Monte Carlo assumptions become visible and editable
-          here as the projection engine arrives in <span className="font-mono text-faint">P3</span>.
-        </p>
-      </Panel>
+      <div className="mt-5">
+        <TaxParamsEditor />
+      </div>
 
       <Panel label="Privacy" className="mt-5">
         <p className="text-sm leading-relaxed text-muted">

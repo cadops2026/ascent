@@ -5,6 +5,7 @@ import type { ClassCma } from '../../lib/finance/cma'
 import type { InflationCurve } from '../../lib/finance/inflation'
 import { solveMaxWithdrawal, guytonKlingerGuardrails, taxAwareSourcing } from '../../lib/finance/withdrawal'
 import type { SourceBucket } from '../../lib/finance/withdrawal'
+import type { TaxParams } from '../../lib/finance/taxparams'
 import type { FilingStatus } from '../../lib/db'
 
 const BUCKET_LABEL: Record<SourceBucket, string> = {
@@ -24,6 +25,7 @@ export interface WithdrawalPlannerProps {
   currentAge: number
   gainFractionDefault: number
   hasReferenceData: boolean // cma/universe loaded
+  taxParams: TaxParams
 }
 
 export function WithdrawalPlanner(p: WithdrawalPlannerProps) {
@@ -60,8 +62,8 @@ export function WithdrawalPlanner(p: WithdrawalPlannerProps) {
       taxable: p.taxable, gainFraction: gainPct / 100,
       taxDeferred: p.taxDeferred, taxFree: p.taxFree,
       rmd: p.rmd, otherOrdinaryIncome: otherIncome, filing: p.filing,
-    }),
-    [plannedSpend, p.taxable, gainPct, p.taxDeferred, p.taxFree, p.rmd, otherIncome, p.filing],
+    }, p.taxParams),
+    [plannedSpend, p.taxable, gainPct, p.taxDeferred, p.taxFree, p.rmd, otherIncome, p.filing, p.taxParams],
   )
 
   return (

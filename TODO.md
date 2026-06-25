@@ -36,6 +36,15 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       verified against hand calcs (browser harness). Follow-ups: lot-level basis for sourcing; fill-the-bracket
       conversion optimizer; pull other-income / RMD age automatically from the profile.
 
+## Done — DB-backed tax parameters (feature)
+- [x] `taxparams.ts` (TaxParams + DEFAULT_TAX_PARAMS + JSON I/O); engine refactor (taxtables/estate/tax/
+      withdrawal take params, defaults preserve outputs — regression-verified); `tax_parameters` table +
+      migration + `useTaxParams`; Settings `TaxParamsEditor` (yearly entry); `tax_params_stale` reminder in
+      the alert digest. **ACTION: run `supabase db push` to apply the migration** (saves degrade gracefully
+      until then), then regenerate `database.types.ts` (a tax_parameters block was hand-added).
+- [ ] **CMA editor + refresh** — cma_sources is DB-backed but has no edit UI; add one (+ fold into the
+      yearly reminder properly). Verify the approx-2026 tax figures vs final IRS/SSA tables.
+
 ## Next phases
 - [ ] **P8 — (optional)**: account aggregation (Plaid/SnapTrade), spouse sharing, **AI overlay**
       (grounded exposure narration + plan Q&A) + **macro-context overlay** (context-not-signal, calm).

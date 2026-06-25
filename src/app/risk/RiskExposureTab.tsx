@@ -14,6 +14,7 @@ import { evaluateAlerts } from '../../lib/finance/alertengine'
 import { amortize } from '../../lib/finance/amortization'
 import { ExposurePanels } from './ExposurePanels'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
+import { useTaxParams } from '../../lib/useTaxParams'
 import { useAuth } from '../../auth/AuthProvider'
 
 /** AssetClass → asset_class_universe key (corr_to_us_equity lives there, invariant #3). */
@@ -34,6 +35,7 @@ interface RulesRow {
 export function RiskExposureTab() {
   const { data, loading } = useBalanceSheet()
   const { session } = useAuth()
+  const { storedYear: taxParamsYear } = useTaxParams()
   const [etfRows, setEtfRows] = useState<EtfHoldingRow[]>([])
   const [betas, setBetas] = useState<UniBeta[]>([])
 
@@ -133,8 +135,10 @@ export function RiskExposureTab() {
         cadence,
       },
       mortgages,
+      taxParamsYear,
+      currentYear: new Date().getFullYear(),
     })
-  }, [bs, lt, targets, bandPt, singleNamePct, narrativePct, cadence, data.liabilities])
+  }, [bs, lt, targets, bandPt, singleNamePct, narrativePct, cadence, data.liabilities, taxParamsYear])
 
   const save = async () => {
     if (!session) return

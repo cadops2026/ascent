@@ -8,7 +8,6 @@ import {
   taxBuckets, withdrawalSequence, assetLocation, tlhOpportunities, rmdProjection,
   rothConversion, coordinatePrompts, bucketForTaxType,
 } from '../../lib/finance/tax'
-import { TAX_YEAR } from '../../lib/finance/taxtables'
 import { buildCma } from '../../lib/finance/cma'
 import { buildInflationCurve } from '../../lib/finance/inflation'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
@@ -18,6 +17,7 @@ import type { FilingStatus } from '../../lib/db'
 import { TaxPanels } from './TaxPanels'
 import { WithdrawalPlanner } from './WithdrawalPlanner'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
+import { useTaxParams } from '../../lib/useTaxParams'
 
 const CLASS_MAP: Record<string, string> = {
   Equities: 'us_equity', Crypto: 'crypto', Cash: 'cash',
@@ -26,6 +26,7 @@ const CLASS_MAP: Record<string, string> = {
 
 export function TaxWithdrawalTab() {
   const { data, loading } = useBalanceSheet()
+  const { params: taxParams } = useTaxParams()
   const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
   const [uniRows, setUniRows] = useState<UniverseRow[]>([])
   const [inflRows, setInflRows] = useState<InflRow[]>([])
@@ -47,7 +48,7 @@ export function TaxWithdrawalTab() {
   const sequence = useMemo(() => withdrawalSequence(buckets.byBucket), [buckets.byBucket])
   const location = useMemo(() => assetLocation(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
   const tlh = useMemo(() => tlhOpportunities(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
-  const rmd = useMemo(() => rmdProjection(buckets.byBucket.tax_deferred, data.profile?.dob), [buckets.byBucket.tax_deferred, data.profile?.dob])
+  const rmd = useMemo(() => rmdProjection(buckets.byBucket.tax_deferred, data.profile?.dob, taxParams), [buckets.byBucket.tax_deferred, data.profile?.dob, taxParams])
 
   const prompts = useMemo(() => {
     const age = data.profile?.dob ? Math.floor((Date.now() - new Date(data.profile.dob).getTime()) / (365.25 * 864e5)) : null
@@ -66,7 +67,7 @@ export function TaxWithdrawalTab() {
   const [filing, setFiling] = useState<FilingStatus>('mfj')
   const [income, setIncome] = useState(150_000)
   const [amount, setAmount] = useState(50_000)
-  const roth = useMemo(() => rothConversion(income, amount, filing), [income, amount, filing])
+  const roth = useMemo(() => rothConversion(income, amount, filing, taxParams), [income, amount, filing, taxParams])
 
   // Withdrawal planner inputs (reuses the consensus-CMA + inflation engines).
   const cma = useMemo(() => buildCma(cmaRows, uniRows), [cmaRows, uniRows])
@@ -130,12 +131,13 @@ export function TaxWithdrawalTab() {
             currentAge={currentAge}
             gainFractionDefault={gainFractionDefault}
             hasReferenceData={uniRows.length > 0}
+            taxParams={taxParams}
           />
 
           {/* Roth conversion explorer */}
           <Panel
             label="Roth conversion explorer"
-            right={<MicroLabel className="text-faint">{TAX_YEAR} brackets · approx</MicroLabel>}
+            right={<MicroLabel className="text-faint">{taxParams.year} brackets · approx</MicroLabel>}
           >
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Field label="Filing status">
@@ -183,7 +185,7 @@ export function TaxWithdrawalTab() {
             </div>
             <p className="mt-4 text-xs leading-relaxed text-faint">
               Converting fills bracket space now to buy tax-free growth later — best in low-income years before
-              RMDs. Watch the {TAX_YEAR} bracket edges and the IRMAA cliffs (your MAGI two years prior sets the
+              RMDs. Watch the {taxParams.year} bracket edges and the IRMAA cliffs (your MAGI two years prior sets the
               Medicare surcharge). Figures are approximate and directional — confirm with your CPA (invariant #9).
             </p>
           </Panel>

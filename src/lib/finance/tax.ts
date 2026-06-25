@@ -2,6 +2,8 @@ import type { Holding, Account, FilingStatus } from '../db'
 import { holdingValue } from './networth'
 import type { QuoteMap } from './networth'
 import { bracketAt, bracketsFor, marginalRate, irmaaTier, rmdDivisor, rmdStartAge } from './taxtables'
+import { DEFAULT_TAX_PARAMS } from './taxparams'
+import type { TaxParams } from './taxparams'
 
 /**
  * Tax & Withdrawal engine. Models tax *exposure* and the conventional levers
@@ -141,12 +143,16 @@ export interface RmdView {
   projectedRmd: number | null // current tax-deferred balance ÷ divisor at start age
 }
 
-export function rmdProjection(taxDeferredBalance: number, dob: string | null | undefined): RmdView {
+export function rmdProjection(
+  taxDeferredBalance: number,
+  dob: string | null | undefined,
+  params: TaxParams = DEFAULT_TAX_PARAMS,
+): RmdView {
   const birthYear = dob ? new Date(dob).getFullYear() : null
   const currentAge = dob ? Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 864e5)) : null
   const startAge = birthYear != null ? rmdStartAge(birthYear) : 73
   const ageForDivisor = currentAge != null && currentAge >= startAge ? currentAge : startAge
-  const divisor = rmdDivisor(ageForDivisor)
+  const divisor = rmdDivisor(ageForDivisor, params)
   return {
     startAge,
     currentAge,
@@ -173,27 +179,28 @@ export function rothConversion(
   taxableIncome: number,
   amount: number,
   filing: FilingStatus,
+  params: TaxParams = DEFAULT_TAX_PARAMS,
 ): RothConversionResult {
-  const start = bracketAt(taxableIncome, filing)
-  const end = bracketAt(taxableIncome + amount, filing)
+  const start = bracketAt(taxableIncome, filing, params)
+  const end = bracketAt(taxableIncome + amount, filing, params)
   // Blended marginal rate across any brackets the conversion spans. Iterate the
   // brackets (not income) so a value landing exactly on a ceiling can't stall.
   const hi = taxableIncome + amount
   let tax = 0
   let prevCeiling = 0
-  for (const t of bracketsFor(filing)) {
+  for (const t of bracketsFor(filing, params)) {
     const lo = Math.max(taxableIncome, prevCeiling)
     const top = Math.min(hi, t.upTo)
     if (top > lo) tax += (top - lo) * t.rate
     prevCeiling = t.upTo
     if (prevCeiling >= hi) break
   }
-  const irmaaBefore = irmaaTier(taxableIncome, filing)
-  const irmaaAfter = irmaaTier(taxableIncome + amount, filing)
+  const irmaaBefore = irmaaTier(taxableIncome, filing, params)
+  const irmaaAfter = irmaaTier(taxableIncome + amount, filing, params)
   return {
     startBracket: start.rate,
     endBracket: end.rate,
-    marginalRateOnConversion: amount > 0 ? tax / amount : marginalRate(taxableIncome, filing),
+    marginalRateOnConversion: amount > 0 ? tax / amount : marginalRate(taxableIncome, filing, params),
     roomToNextBracket: Math.max(0, start.ceiling - taxableIncome),
     irmaaBefore: irmaaBefore.surcharge,
     irmaaAfter: irmaaAfter.surcharge,

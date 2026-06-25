@@ -3,7 +3,9 @@ import type { McParams } from './montecarlo'
 import type { ClassCma } from './cma'
 import type { InflationCurve } from './inflation'
 import type { FilingStatus } from '../db'
-import { STANDARD_DEDUCTION, ordinaryTax, ltcgTax, marginalRate } from './taxtables'
+import { standardDeduction, ordinaryTax, ltcgTax, marginalRate } from './taxtables'
+import { DEFAULT_TAX_PARAMS } from './taxparams'
+import type { TaxParams } from './taxparams'
 
 /**
  * Withdrawal Planner. Three pieces, each grounded in an existing engine:
@@ -145,14 +147,14 @@ function grossForNet(target: number, max: number, taxOfGross: (g: number) => num
   return hi
 }
 
-export function taxAwareSourcing(inp: SourcingInput): SourcingResult {
-  const stdDed = STANDARD_DEDUCTION[inp.filing]
+export function taxAwareSourcing(inp: SourcingInput, params: TaxParams = DEFAULT_TAX_PARAMS): SourcingResult {
+  const stdDed = standardDeduction(inp.filing, params)
   const draws: SourcingDraw[] = []
   let remaining = inp.netNeed
   // Running gross ordinary income (other income + ordinary withdrawals), used to
   // stack each new ordinary dollar at the right marginal rate.
   let ordinaryGross = inp.otherOrdinaryIncome
-  const ordTaxAt = (gross: number) => ordinaryTax(Math.max(0, gross - stdDed), inp.filing)
+  const ordTaxAt = (gross: number) => ordinaryTax(Math.max(0, gross - stdDed), inp.filing, params)
   const incrementalOrdTax = (add: number) => ordTaxAt(ordinaryGross + add) - ordTaxAt(ordinaryGross)
 
   // 1) RMD — forced out of tax-deferred regardless; ordinary income.
@@ -168,7 +170,7 @@ export function taxAwareSourcing(inp: SourcingInput): SourcingResult {
   // 2) Taxable — only the gain fraction is taxed, at LTCG stacked on ordinary income.
   if (remaining > 0 && inp.taxable > 0) {
     const ordTaxable = Math.max(0, ordinaryGross - stdDed)
-    const taxOfGross = (g: number) => ltcgTax(ordTaxable, g * inp.gainFraction, inp.filing)
+    const taxOfGross = (g: number) => ltcgTax(ordTaxable, g * inp.gainFraction, inp.filing, params)
     const gross = grossForNet(remaining, inp.taxable, taxOfGross)
     const tax = taxOfGross(gross)
     const net = gross - tax
@@ -204,6 +206,6 @@ export function taxAwareSourcing(inp: SourcingInput): SourcingResult {
     netDelivered,
     unmet: Math.max(0, remaining),
     effectiveRate: totalGross > 0 ? totalTax / totalGross : 0,
-    marginalOrdinaryRate: marginalRate(Math.max(0, ordinaryGross - stdDed), inp.filing),
+    marginalOrdinaryRate: marginalRate(Math.max(0, ordinaryGross - stdDed), inp.filing, params),
   }
 }

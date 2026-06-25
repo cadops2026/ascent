@@ -40,9 +40,12 @@ export interface EvalInput {
   bands: BandSpec[]
   rules: AlertRuleSet
   mortgages: MortgageEvent[]
+  /** Tax-parameter freshness: the stored year (null = none) vs the current year. */
+  taxParamsYear?: number | null
+  currentYear?: number
 }
 
-export type AlertKind = 'rebalance_band' | 'single_name' | 'narrative' | 'mortgage_payoff'
+export type AlertKind = 'rebalance_band' | 'single_name' | 'narrative' | 'mortgage_payoff' | 'tax_params_stale'
 export type AlertSeverity = 'info' | 'caution' | 'high'
 
 export interface EvaluatedAlert {
@@ -112,6 +115,20 @@ export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
         severity: 'info',
         title: `${m.label} pays off in ${m.monthsToPayoff} month${m.monthsToPayoff === 1 ? '' : 's'}`,
         detail: 'Freed cash flow ahead — plan where it routes (contributions, reserves) before it arrives.',
+      })
+    }
+  }
+
+  // 5) Tax-parameter freshness — a dated reminder to enter this year's statutory
+  //    figures (IRS Rev. Proc.), so projections use current law. Not a market move.
+  if (input.currentYear != null) {
+    const y = input.taxParamsYear
+    if (y == null || y < input.currentYear) {
+      out.push({
+        kind: 'tax_params_stale',
+        severity: 'info',
+        title: y == null ? 'Tax parameters not set for this year' : `Tax parameters are from ${y}`,
+        detail: `Enter ${input.currentYear} brackets, IRMAA, RMD, and estate figures in Settings so tax, withdrawal, and estate numbers use current law. Update once a year when the IRS Revenue Procedure publishes.`,
       })
     }
   }

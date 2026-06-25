@@ -15,6 +15,7 @@ import type { FilingStatus, InsurancePolicy, EstateDoc } from '../../lib/db'
 import { ProtectionPanels } from './ProtectionPanels'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { useAuth } from '../../auth/AuthProvider'
+import { useTaxParams } from '../../lib/useTaxParams'
 
 function ageFromDob(dob: string | null | undefined): number | null {
   if (!dob) return null
@@ -51,7 +52,8 @@ export function EstateProtectionTab() {
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data],
   )
-  const exposure = useMemo(() => estateExposure(bs.netWorth, filing), [bs.netWorth, filing])
+  const { params: taxParams } = useTaxParams()
+  const exposure = useMemo(() => estateExposure(bs.netWorth, filing, taxParams), [bs.netWorth, filing, taxParams])
   const liquidity = useMemo(
     () => liquidityView(data.holdings, data.accounts, data.quotes, exposure.federalTax),
     [data.holdings, data.accounts, data.quotes, exposure.federalTax],

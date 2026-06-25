@@ -706,6 +706,27 @@ export type Database = {
         }
         Relationships: []
       }
+      tax_parameters: {
+        Row: {
+          params: Json
+          tax_year: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          params: Json
+          tax_year: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          params?: Json
+          tax_year?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       target_allocation: {
         Row: {
           asset_class: string

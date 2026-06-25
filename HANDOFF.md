@@ -1,8 +1,36 @@
 # HANDOFF — after P0 (Foundation)
 
-_Updated at the end of each phase (CLAUDE.md). Current phase: **Withdrawal Planner (a feature on top of
-P5) BUILT + verified — see below. All 8 tabs are live; this adds the "how much can I withdraw + how to
-source it tax-optimally" tool the user asked for. Stacked on P5. Awaiting review.**_
+_Updated at the end of each phase (CLAUDE.md). Current phase: **DB-backed tax parameters (a feature on
+top of the Withdrawal Planner) BUILT + verified — see below. Moves the hardcoded statutory tables into a
+user-maintained DB table so they update yearly with a reminder, not a code change. Stacked on the planner
+→ P5. Awaiting review.**_
+
+## DB-backed tax parameters (feature)
+
+User directive: "import up-to-date tax %… all values that change with time should be updated regularly."
+Tax/estate constants were hardcoded; now they live in a DB table, entered yearly with a reminder (no
+clean official tax API; brackets change annually — manual entry chosen). All green (`tsc`/`build`/`lint`).
+- **`taxparams.ts`** — `TaxParams` (brackets / std deduction / LTCG / IRMAA / RMD / NIIT / estate exemption
+  + rate) + `DEFAULT_TAX_PARAMS` (the old 2026 constants, now the graceful fallback) + JSON (de)serialize
+  (Infinity↔null for the jsonb).
+- **Engine refactor** — `taxtables.ts` functions + `estate.ts` `estateExposure` + `tax.ts` (rothConversion,
+  rmdProjection) + `withdrawal.ts` (taxAwareSourcing) now take a `TaxParams`, defaulting to the constants,
+  so **outputs are identical until overridden** (regression-verified: sourcing $200,324/$324 and
+  $65,808/24%, estate $40M→$4M/$36M all unchanged). `NIIT_THRESHOLD/RATE` (unused) dropped from taxtables.
+- **`tax_parameters` table** (migration `20260625193000_tax_parameters.sql`): user-scoped, year-keyed,
+  `params` jsonb, RLS owner-only. `useTaxParams()` loads the latest year (or defaults). Tax / Estate / Risk
+  tabs read it. **Manually added to `database.types.ts`** so it compiles before the migration runs.
+- **Settings editor** (`TaxParamsEditor`, replaced the stale "Assumptions" placeholder): year + JSON editor
+  pre-filled with the active params, "load built-in defaults", save → upsert. Shows "using built-in
+  defaults" (amber) vs "stored: {year}".
+- **Yearly reminder** — alert engine gains a `tax_params_stale` kind: fires in the Risk digest when the
+  stored year lags the calendar year (or none stored). Date-driven, never price-triggered (#7).
+- **⚠️ Activation step:** the migration is **not applied to the live DB**. Run `supabase db push` to enable
+  saving (until then it degrades gracefully — defaults everywhere, and Save shows a clear "not migrated yet"
+  message). After pushing, regenerate types to replace the hand-added block.
+- **Still hardcoded / follow-up:** **CMA** is already DB-backed (cma_sources) but lacks an edit UI — only
+  folded into the reminder concept here; a CMA editor is a separate follow-up. `rmdStartAge` (SECURE 2.0)
+  stays in code (statute, not a yearly figure).
 
 ## Withdrawal Planner (feature, on top of P5)
 
