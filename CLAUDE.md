@@ -16,18 +16,17 @@ data model, Edge Functions, design system, P0→P8 plan).
 
 ## Separation from Jamzli (HARD RULE — never violate)
 
-**ASCENT is a standalone project, completely separate from Jamzli. Never commingle the two.**
+**ASCENT and Jamzli are separate projects. They may live under the same GitHub *account* but must stay
+separate *repos* — never commingle their code, config, or infrastructure.**
 
-- **No Jamzli references** anywhere in this repo — code, docs, comments, commit messages, config,
-  `.claude/` settings, env files. ASCENT stands alone; Jamzli is a *holding the user owns*, modeled
-  generically as "private/founder equity," never named here.
-- **Separate infrastructure, no sharing.** The GitHub repo, Supabase project, API keys/secrets, env,
-  and any accounts must be ASCENT-dedicated — never owned by, shared with, or pointing at Jamzli
-  resources or directories (e.g. no permissions or paths referencing `…/Jamzli`).
-- **If only a Jamzli-owned resource is available** (account, project, key), **stop and ask** for an
-  ASCENT-dedicated one rather than reusing Jamzli's. Don't default to Jamzli for convenience.
-- Known follow-up: the GitHub repo currently sits under the `Jamzli` user account — it must be
-  transferred to an ASCENT-dedicated owner (pending a target from the user).
+- **Separate repos, never merged.** ASCENT is its own repo. A shared GitHub account is fine; sharing a
+  *repo*, or pulling Jamzli's code/files/paths into this one, is not.
+- **No Jamzli references** in this repo — code, docs, comments, commit messages, config, `.claude/`
+  settings, env. No paths or permissions pointing at Jamzli's directory or resources (e.g. `…/Jamzli`).
+  Jamzli is just a *holding the user owns*, modeled generically as "private/founder equity," never named.
+- **Separate infrastructure.** ASCENT's Supabase project, API keys/secrets, and env are dedicated to
+  ASCENT — never shared with or pointing at Jamzli's. If only a Jamzli-owned resource is on hand, stop
+  and ask for an ASCENT-dedicated one rather than reusing it.
 
 ## Stack (locked — ask before deviating)
 
