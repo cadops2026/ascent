@@ -1,8 +1,31 @@
 # HANDOFF — after P0 (Foundation)
 
-_Updated at the end of each phase (CLAUDE.md). Current phase: **P5 (Tax & Withdrawal) core BUILT +
-verified — see below. With it, all 8 tabs are live — the product is feature-complete (P8 aggregation/AI
-overlays remain optional). P6/P7 + the spine P0–P4 + a hardening pass precede it. Awaiting review.**_
+_Updated at the end of each phase (CLAUDE.md). Current phase: **Withdrawal Planner (a feature on top of
+P5) BUILT + verified — see below. All 8 tabs are live; this adds the "how much can I withdraw + how to
+source it tax-optimally" tool the user asked for. Stacked on P5. Awaiting review.**_
+
+## Withdrawal Planner (feature, on top of P5)
+
+A retirement-withdrawal tool in the Tax & Withdrawal tab. Three engines in `lib/finance/withdrawal.ts`,
+each grounded in an existing primitive; **formulas verified against hand calcs** via the browser harness
+(tsx unavailable — no network to fetch it). All green (`tsc -b`, `vite build`, `oxlint`).
+- **`solveMaxWithdrawal`** — the *inverse* of the Projection: success prob is monotonic in spend, so
+  binary-search the largest constant real withdrawal clearing the confidence target (reuses the one MC).
+  Verified: $2M / 70-30 / 30y / 85% → $75,318 (3.77%), success ≈ 85%.
+- **`guytonKlingerGuardrails`** — GK 2006 rules: cut spend 10% if the withdrawal *rate* rises 20% above
+  the initial rate, raise 10% if it falls 20% below → portfolio thresholds P/1.2 and P/0.8. Verified:
+  $200k on $5M → trim at $4,166,667→$180k, raise at $6,250,000→$220k (exact).
+- **`taxAwareSourcing`** — meets a net spend from RMD→taxable→tax-deferred→Roth with **correct
+  progressive ordinary tax** (`ordinaryTax`, bracket-stacked) and **stacked 0/15/20% LTCG** (`ltcgTax`,
+  gains stacked on ordinary income), **grossed-up** (binary search) so net delivered = the need. Verified
+  exact: mfj $0-income $200k taxable@50% gain → $200,324 gross / $324 tax; $400k need spilling to
+  tax-deferred → $365,808 gross / $65,808 tax / 24% marginal.
+- **UI** `app/tax/WithdrawalPlanner.tsx` (in the Tax tab): safe-spend hero (editable retire/plan/
+  confidence), GK guardrail cards, and a tax-aware sourcing draw plan (editable spend/other-income/gain%).
+  The Tax tab now also loads the consensus-CMA + inflation tables (like Projection) to feed the solver.
+- **Simplifications (flagged):** approx 2026 LTCG/ordinary thresholds; LTCG rate keyed off ordinary
+  taxable income; gain fraction is an editable assumption (defaults to computed-from-basis, 50% if
+  unknown); fill-the-bracket conversions live in the separate Roth explorer.
 
 ## P5 — Tax & Withdrawal (core BUILT)
 

@@ -106,3 +106,53 @@ export const NIIT_RATE = 0.038
 export const NIIT_THRESHOLD: Record<FilingStatus, number> = {
   single: 200_000, hoh: 200_000, mfs: 125_000, mfj: 250_000, qw: 250_000,
 }
+
+/**
+ * Progressive ordinary-income tax on `taxableIncome` (income already net of the
+ * standard deduction). Sums each bracket's slice × its rate — the correct
+ * piecewise computation, so the incremental tax of an extra dollar equals the
+ * marginal rate there, and a withdrawal spanning brackets is taxed correctly.
+ */
+export function ordinaryTax(taxableIncome: number, filing: FilingStatus): number {
+  if (taxableIncome <= 0) return 0
+  let tax = 0
+  let prev = 0
+  for (const t of bracketsFor(filing)) {
+    const lo = prev
+    const hi = Math.min(taxableIncome, t.upTo)
+    if (hi > lo) tax += (hi - lo) * t.rate
+    prev = t.upTo
+    if (prev >= taxableIncome) break
+  }
+  return tax
+}
+
+// ── Long-term capital gains (0/15/20, stacked on top of ordinary income) ────────
+// Taxable-income thresholds where the LTCG rate steps up (approx 2026).
+const LTCG_0_TOP: Partial<Record<FilingStatus, number>> = { single: 49_000, mfj: 98_000, hoh: 66_000 }
+const LTCG_15_TOP: Partial<Record<FilingStatus, number>> = { single: 545_000, mfj: 613_000, hoh: 579_000 }
+
+function ltcgThresholds(filing: FilingStatus): { zeroTop: number; fifteenTop: number } {
+  const key: FilingStatus = filing === 'mfj' || filing === 'qw' ? 'mfj' : filing === 'hoh' ? 'hoh' : 'single'
+  return { zeroTop: LTCG_0_TOP[key]!, fifteenTop: LTCG_15_TOP[key]! }
+}
+
+/**
+ * Tax on `gain` of long-term capital gains, correctly STACKED on top of
+ * `ordinaryTaxableIncome`: the 0/15/20% brackets are filled by ordinary income
+ * first, so only the portion of the gain landing in each band is taxed at that
+ * band's rate. (A flat LTCG rate would mis-tax a large gain relative to the bands.)
+ */
+export function ltcgTax(ordinaryTaxableIncome: number, gain: number, filing: FilingStatus): number {
+  if (gain <= 0) return 0
+  const { zeroTop, fifteenTop } = ltcgThresholds(filing)
+  let pos = Math.max(0, ordinaryTaxableIncome)
+  let remaining = gain
+  let tax = 0
+  const inZero = Math.max(0, Math.min(remaining, zeroTop - pos))
+  pos += inZero; remaining -= inZero // 0% band
+  const inFifteen = Math.max(0, Math.min(remaining, fifteenTop - pos))
+  tax += inFifteen * 0.15; pos += inFifteen; remaining -= inFifteen // 15% band
+  tax += Math.max(0, remaining) * 0.2 // 20% band
+  return tax
+}

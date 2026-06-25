@@ -29,6 +29,13 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       TLH, Roth-conversion/IRMAA explorer, CPA coordinate-prompts. Approx 2026 statutory constants, shown
       in-UI. Model + flag + coordinate — never file (#9). **All 8 tabs now live (feature-complete).**
 
+## Done — Withdrawal Planner (feature on top of P5)
+- [x] `withdrawal.ts` — **solveMaxWithdrawal** (binary-search the MC inverse), **Guyton-Klinger guardrails**
+      (rate ±20% → spend ∓10%), **taxAwareSourcing** (RMD→taxable→deferred→Roth; progressive ordinary tax +
+      stacked 0/15/20% LTCG; grossed-up to net). Surfaced in the Tax tab via `WithdrawalPlanner`. Formulas
+      verified against hand calcs (browser harness). Follow-ups: lot-level basis for sourcing; fill-the-bracket
+      conversion optimizer; pull other-income / RMD age automatically from the profile.
+
 ## Next phases
 - [ ] **P8 — (optional)**: account aggregation (Plaid/SnapTrade), spouse sharing, **AI overlay**
       (grounded exposure narration + plan Q&A) + **macro-context overlay** (context-not-signal, calm).

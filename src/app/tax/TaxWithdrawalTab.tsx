@@ -1,20 +1,47 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import { Panel, Figure, Field, Input, Select, MicroLabel } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
 import { fmtMoneyCompact, fmtPct } from '../../lib/format'
-import { holdingValue } from '../../lib/finance/networth'
+import { computeBalanceSheet, holdingValue } from '../../lib/finance/networth'
 import {
   taxBuckets, withdrawalSequence, assetLocation, tlhOpportunities, rmdProjection,
   rothConversion, coordinatePrompts, bucketForTaxType,
 } from '../../lib/finance/tax'
 import { TAX_YEAR } from '../../lib/finance/taxtables'
+import { buildCma } from '../../lib/finance/cma'
+import { buildInflationCurve } from '../../lib/finance/inflation'
+import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
+import type { InflRow } from '../../lib/finance/inflation'
 import { FILING_STATUSES, FILING_LABEL } from '../../lib/db'
 import type { FilingStatus } from '../../lib/db'
 import { TaxPanels } from './TaxPanels'
+import { WithdrawalPlanner } from './WithdrawalPlanner'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
+
+const CLASS_MAP: Record<string, string> = {
+  Equities: 'us_equity', Crypto: 'crypto', Cash: 'cash',
+  Private: 'private_equity', Collectibles: 'collectibles', 'Real estate': 'real_estate',
+}
 
 export function TaxWithdrawalTab() {
   const { data, loading } = useBalanceSheet()
+  const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
+  const [uniRows, setUniRows] = useState<UniverseRow[]>([])
+  const [inflRows, setInflRows] = useState<InflRow[]>([])
+
+  useEffect(() => {
+    void (async () => {
+      const [c, u, i] = await Promise.all([
+        supabase.from('cma_sources').select('asset_class, house, value'),
+        supabase.from('asset_class_universe').select('class, cma_premium, vol, corr_to_us_equity, cost_proxy'),
+        supabase.from('infl_expectations_cache').select('source, horizon_years, value'),
+      ])
+      setCmaRows((c.data ?? []) as CmaSourceRow[])
+      setUniRows((u.data ?? []) as UniverseRow[])
+      setInflRows((i.data ?? []) as InflRow[])
+    })()
+  }, [])
 
   const buckets = useMemo(() => taxBuckets(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
   const sequence = useMemo(() => withdrawalSequence(buckets.byBucket), [buckets.byBucket])
@@ -41,6 +68,39 @@ export function TaxWithdrawalTab() {
   const [amount, setAmount] = useState(50_000)
   const roth = useMemo(() => rothConversion(income, amount, filing), [income, amount, filing])
 
+  // Withdrawal planner inputs (reuses the consensus-CMA + inflation engines).
+  const cma = useMemo(() => buildCma(cmaRows, uniRows), [cmaRows, uniRows])
+  const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
+  const bs = useMemo(
+    () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
+    [data.holdings, data.realEstate, data.liabilities, data.quotes],
+  )
+  const weights = useMemo(() => {
+    const w: Record<string, number> = {}
+    for (const s of bs.byClass) {
+      const k = CLASS_MAP[s.class]
+      if (k) w[k] = (w[k] ?? 0) + s.value
+    }
+    return w
+  }, [bs.byClass])
+  const gainFractionDefault = useMemo(() => {
+    let val = 0
+    let gain = 0
+    const taxableIds = new Set(data.accounts.filter((a) => bucketForTaxType(a.tax_type) === 'taxable').map((a) => a.id))
+    for (const h of data.holdings) {
+      if (h.account_id && !taxableIds.has(h.account_id)) continue
+      if (h.kind === 'cash') continue
+      const v = holdingValue(h, data.quotes)
+      if (v == null || v <= 0) continue
+      val += v
+      gain += h.cost_basis != null ? Math.max(0, v - h.cost_basis) : v * 0.5 // unknown basis ⇒ assume 50% gain
+    }
+    return val > 0 ? Math.min(1, gain / val) : 0.5
+  }, [data.accounts, data.holdings, data.quotes])
+  const currentAge = data.profile?.dob
+    ? Math.floor((Date.now() - new Date(data.profile.dob).getTime()) / (365.25 * 864e5))
+    : 45
+
   const empty = buckets.total <= 0
 
   return (
@@ -56,6 +116,21 @@ export function TaxWithdrawalTab() {
       ) : (
         <>
           <TaxPanels buckets={buckets} sequence={sequence} location={location} rmd={rmd} tlh={tlh} prompts={prompts} />
+
+          <WithdrawalPlanner
+            cma={cma}
+            infl={infl}
+            weights={weights}
+            investable={bs.investable}
+            taxable={buckets.byBucket.taxable}
+            taxDeferred={buckets.byBucket.tax_deferred}
+            taxFree={buckets.byBucket.tax_free}
+            rmd={rmd.active ? (rmd.projectedRmd ?? 0) : 0}
+            filing={filing}
+            currentAge={currentAge}
+            gainFractionDefault={gainFractionDefault}
+            hasReferenceData={uniRows.length > 0}
+          />
 
           {/* Roth conversion explorer */}
           <Panel
