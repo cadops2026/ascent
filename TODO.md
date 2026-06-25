@@ -68,8 +68,10 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       engine (invariant #1), never re-implements the thresholds.
 - [ ] **Sector concentration** in the alert engine + Risk tab (needs a company→sector source; crypto is the
       theme proxy today). Per-class rebalance-band override UI (engine already supports it; UI sets a global band).
-- [ ] **Dashboard hero** can now light up — narrative exposure (P2/P6) + success probability (P3) exist, so
-      the "arrives P2/P3" placeholders are stale. Wire the real hero (runs MC + look-through like the tabs do).
+- [x] **Dashboard hero** — lit up. `DashboardHero` (presentational, render-tested via throwaway harness
+      with real engine output) shows **success probability** (reuses the Projection Monte Carlo call) +
+      **largest single-name exposure** + the conservative P25 band (#4), plus the deterministic exposure
+      narrative (reuses the Risk look-through→factor→narrative chain, #1). Calm, no daily delta (#6).
 
 ## P2 deferrals (need data we don't hold yet — sequence with their source)
 - [ ] Sector concentration (needs a company→sector source, e.g. FMP profiles).
