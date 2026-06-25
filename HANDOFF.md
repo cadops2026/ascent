@@ -1,8 +1,33 @@
 # HANDOFF — after P0 (Foundation)
 
-_Updated at the end of each phase (CLAUDE.md). Current phase: **P7 (Estate & Protection) core BUILT +
-verified — see below. P6 (Risk + alerts), the spine P0–P4, and a hardening pass precede it. P5 Tax was
-skipped per spec §8 (least differentiated). Awaiting review.**_
+_Updated at the end of each phase (CLAUDE.md). Current phase: **P5 (Tax & Withdrawal) core BUILT +
+verified — see below. With it, all 8 tabs are live — the product is feature-complete (P8 aggregation/AI
+overlays remain optional). P6/P7 + the spine P0–P4 + a hardening pass precede it. Awaiting review.**_
+
+## P5 — Tax & Withdrawal (core BUILT)
+
+The last placeholder tab (built after P6/P7 since spec §8 flags it least-differentiated). All green
+(`tsc -b`, `vite build`, `oxlint`); model + flag + coordinate, never file (invariant #9).
+- **Engines** (pure): `taxtables.ts` (APPROX 2026 statutory constants — brackets/std deduction/IRMAA
+  tiers/RMD divisors/NIIT, clearly dated + shown in-UI so the assumption is visible) and `tax.ts`
+  (tax-bucket map taxable/deferred/free/HSA, withdrawal sequencing, asset location, holding-level TLH,
+  RMD projection, Roth-conversion bracket-fill + IRMAA crossing, CPA coordinate-prompts).
+- **Bug caught + fixed in verification:** `rothConversion`'s marginal-tax loop infinite-looped when
+  income landed exactly on a bracket ceiling (`bracketAt` is inclusive) — rewrote it to iterate brackets,
+  not income. The render harness hung, which surfaced it before ship.
+- **Tax & Withdrawal tab** (live): `app/tax/TaxWithdrawalTab.tsx` (container) + `TaxPanels.tsx`
+  (presentational, render-tested with real engine output). Account map by tax treatment, withdrawal
+  sequence, asset location, RMD projection, TLH opportunities (wash-sale caution), CPA prompts, and an
+  interactive **Roth conversion explorer** (income/amount/filing → marginal rate, bracket fill, IRMAA
+  tier crossing). Verified: $3.7M across buckets, RMD $75,472 (=$2M÷26.5), Roth $100k @ $150k MFJ →
+  22.8% blended marginal / $22,834 tax / crosses an IRMAA tier; Tax tab reachable end-to-end.
+- **No migration** — uses existing `accounts.tax_type`, holdings `cost_basis`, `profiles.dob/filing`.
+- **Scoped as prompts (need income/lot data we don't hold):** NIIT/AMT, QBI/cash-balance, charitable/QCD
+  are coordinate-prompts, not computed; TLH is holding-level (lot-level + wash-sale dates are a follow-up).
+
+> NOTE on verification tooling: `npx tsx` for the standalone engine check hung (no network in the sandbox
+> to fetch tsx; it was cached in earlier phases). Verified instead via the browser harness (Vite resolves
+> TS), which runs the real engines and renders the numbers — also how the infinite-loop bug surfaced.
 
 ## P7 — Estate & Protection (core BUILT)
 

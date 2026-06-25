@@ -60,7 +60,7 @@ export const TABS: TabDef[] = [
     id: 'tax',
     label: 'Tax & Withdrawal',
     phase: 'P5',
-    live: false,
+    live: true,
     blurb: 'Account tagging, withdrawal sequencing, Roth/RMD/TLH, asset location. Model + flag, not file.',
   },
   {

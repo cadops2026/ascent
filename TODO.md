@@ -24,12 +24,19 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       w/ staleness, insurance add/remove). Model + flag + prompt the professional — never draft/file (#9).
       *Remaining P7 piece:* the encrypted file-vault upload (below).
 
+## Done — P5 (Tax & Withdrawal) — core
+- [x] **P5 (core)** — tax-bucket map, withdrawal sequencing, asset location, RMD projection, holding-level
+      TLH, Roth-conversion/IRMAA explorer, CPA coordinate-prompts. Approx 2026 statutory constants, shown
+      in-UI. Model + flag + coordinate — never file (#9). **All 8 tabs now live (feature-complete).**
+
 ## Next phases
-- [ ] **P5 — Tax & Withdrawal** (skipped earlier, spec §8 — competitors do it well): account-type tagging,
-      withdrawal sequencing, Roth/IRMAA, RMDs, lot-level TLH + wash-sale, asset location, NIIT/AMT,
-      charitable/DAF, cash-balance/QBI flags. *Model + flag + coordinate — never file (invariant #9).*
 - [ ] **P8 — (optional)**: account aggregation (Plaid/SnapTrade), spouse sharing, **AI overlay**
       (grounded exposure narration + plan Q&A) + **macro-context overlay** (context-not-signal, calm).
+
+## P5 follow-ups
+- [ ] Lot-level TLH + **wash-sale** date checks (today: holding-level from `cost_basis`).
+- [ ] Wire real income/MAGI (when available) so NIIT/AMT/IRMAA move from prompts to computed.
+- [ ] Re-verify the approx 2026 brackets/IRMAA/std-deduction against final IRS/SSA tables.
 
 ## P7 follow-ups
 - [ ] **Estate-doc encrypted vault upload** — needs a Storage bucket + RLS (a migration, like the

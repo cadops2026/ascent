@@ -15,6 +15,7 @@ const ProjectionTab = lazy(() => import('./projection/ProjectionTab').then((m) =
 const WorkGlidePathTab = lazy(() => import('./glidepath/WorkGlidePathTab').then((m) => ({ default: m.WorkGlidePathTab })))
 const RiskExposureTab = lazy(() => import('./risk/RiskExposureTab').then((m) => ({ default: m.RiskExposureTab })))
 const EstateProtectionTab = lazy(() => import('./estate/EstateProtectionTab').then((m) => ({ default: m.EstateProtectionTab })))
+const TaxWithdrawalTab = lazy(() => import('./tax/TaxWithdrawalTab').then((m) => ({ default: m.TaxWithdrawalTab })))
 
 function TabFallback() {
   return <p className="py-16 text-center text-sm text-faint">Loading…</p>
@@ -95,6 +96,8 @@ export function AppShell() {
               <RiskExposureTab />
             ) : tab.id === 'estate' ? (
               <EstateProtectionTab />
+            ) : tab.id === 'tax' ? (
+              <TaxWithdrawalTab />
             ) : tab.id === 'settings' ? (
               <Settings />
             ) : (
