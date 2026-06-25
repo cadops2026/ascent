@@ -42,10 +42,18 @@ export interface EvalInput {
   mortgages: MortgageEvent[]
   /** Tax-parameter freshness: the stored year (null = none) vs the current year. */
   taxParamsYear?: number | null
+  /** CMA-override freshness; null = none stored (using seeded consensus). */
+  cmaParamsYear?: number | null
   currentYear?: number
 }
 
-export type AlertKind = 'rebalance_band' | 'single_name' | 'narrative' | 'mortgage_payoff' | 'tax_params_stale'
+export type AlertKind =
+  | 'rebalance_band'
+  | 'single_name'
+  | 'narrative'
+  | 'mortgage_payoff'
+  | 'tax_params_stale'
+  | 'cma_params_stale'
 export type AlertSeverity = 'info' | 'caution' | 'high'
 
 export interface EvaluatedAlert {
@@ -129,6 +137,17 @@ export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
         severity: 'info',
         title: y == null ? 'Tax parameters not set for this year' : `Tax parameters are from ${y}`,
         detail: `Enter ${input.currentYear} brackets, IRMAA, RMD, and estate figures in Settings so tax, withdrawal, and estate numbers use current law. Update once a year when the IRS Revenue Procedure publishes.`,
+      })
+    }
+    // CMA override freshness — only nudge once one has been set (null = using the
+    // seeded consensus, which is fine; we don't badger before they've opted in).
+    const c = input.cmaParamsYear
+    if (c != null && c < input.currentYear) {
+      out.push({
+        kind: 'cma_params_stale',
+        severity: 'info',
+        title: `Capital-market assumptions are from ${c}`,
+        detail: `Refresh expected returns / vol / correlation in Settings as the major houses republish, so projections use current views.`,
       })
     }
   }

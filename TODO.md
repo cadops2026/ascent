@@ -42,8 +42,10 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       migration + `useTaxParams`; Settings `TaxParamsEditor` (yearly entry); `tax_params_stale` reminder in
       the alert digest. **ACTION: run `supabase db push` to apply the migration** (saves degrade gracefully
       until then), then regenerate `database.types.ts` (a tax_parameters block was hand-added).
-- [ ] **CMA editor + refresh** — cma_sources is DB-backed but has no edit UI; add one (+ fold into the
-      yearly reminder properly). Verify the approx-2026 tax figures vs final IRS/SSA tables.
+- [x] **CMA editor + refresh** — `cmaparams.ts` + `applyCmaOverride` + `cma_params` table/migration +
+      `useCmaParams` + Settings `CmaParamsEditor` (per-class er/vol/corr) + `cma_params_stale` reminder;
+      override flows into Projection / Glide / Withdrawal Planner. **Run `supabase db push` to apply the
+      cma_params migration.** Remaining: verify the approx-2026 tax figures vs final IRS/SSA tables.
 
 ## Next phases
 - [ ] **P8 — (optional)**: account aggregation (Plaid/SnapTrade), spouse sharing, **AI overlay**

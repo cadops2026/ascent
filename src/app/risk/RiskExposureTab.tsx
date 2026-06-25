@@ -15,6 +15,7 @@ import { amortize } from '../../lib/finance/amortization'
 import { ExposurePanels } from './ExposurePanels'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { useTaxParams } from '../../lib/useTaxParams'
+import { useCmaParams } from '../../lib/useCmaParams'
 import { useAuth } from '../../auth/AuthProvider'
 
 /** AssetClass → asset_class_universe key (corr_to_us_equity lives there, invariant #3). */
@@ -36,6 +37,7 @@ export function RiskExposureTab() {
   const { data, loading } = useBalanceSheet()
   const { session } = useAuth()
   const { storedYear: taxParamsYear } = useTaxParams()
+  const { storedYear: cmaParamsYear } = useCmaParams()
   const [etfRows, setEtfRows] = useState<EtfHoldingRow[]>([])
   const [betas, setBetas] = useState<UniBeta[]>([])
 
@@ -136,9 +138,10 @@ export function RiskExposureTab() {
       },
       mortgages,
       taxParamsYear,
+      cmaParamsYear,
       currentYear: new Date().getFullYear(),
     })
-  }, [bs, lt, targets, bandPt, singleNamePct, narrativePct, cadence, data.liabilities, taxParamsYear])
+  }, [bs, lt, targets, bandPt, singleNamePct, narrativePct, cadence, data.liabilities, taxParamsYear, cmaParamsYear])
 
   const save = async () => {
     if (!session) return

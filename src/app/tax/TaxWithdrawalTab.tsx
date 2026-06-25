@@ -8,7 +8,8 @@ import {
   taxBuckets, withdrawalSequence, assetLocation, tlhOpportunities, rmdProjection,
   rothConversion, coordinatePrompts, bucketForTaxType,
 } from '../../lib/finance/tax'
-import { buildCma } from '../../lib/finance/cma'
+import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import { useCmaParams } from '../../lib/useCmaParams'
 import { buildInflationCurve } from '../../lib/finance/inflation'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
 import type { InflRow } from '../../lib/finance/inflation'
@@ -70,7 +71,8 @@ export function TaxWithdrawalTab() {
   const roth = useMemo(() => rothConversion(income, amount, filing, taxParams), [income, amount, filing, taxParams])
 
   // Withdrawal planner inputs (reuses the consensus-CMA + inflation engines).
-  const cma = useMemo(() => buildCma(cmaRows, uniRows), [cmaRows, uniRows])
+  const { params: cmaOverride } = useCmaParams()
+  const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
   const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),

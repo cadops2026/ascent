@@ -4,7 +4,8 @@ import { Panel, Figure, MicroLabel, Field, Input } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
 import { fmtPct } from '../../lib/format'
 import { computeBalanceSheet, holdingValue } from '../../lib/finance/networth'
-import { buildCma } from '../../lib/finance/cma'
+import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import { useCmaParams } from '../../lib/useCmaParams'
 import { buildInflationCurve } from '../../lib/finance/inflation'
 import { solveYearsOfWork, solveMaintainWealth, sensitivityStrip, principleFor } from '../../lib/finance/glidepath'
 import type { GlideInput } from '../../lib/finance/glidepath'
@@ -61,7 +62,8 @@ export function WorkGlidePathTab() {
     setInited(true)
   }, [loading, data, inited])
 
-  const cma = useMemo(() => buildCma(cmaRows, uniRows), [cmaRows, uniRows])
+  const { params: cmaOverride } = useCmaParams()
+  const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
   const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),

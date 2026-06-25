@@ -1,9 +1,26 @@
 # HANDOFF — after P0 (Foundation)
 
-_Updated at the end of each phase (CLAUDE.md). Current phase: **DB-backed tax parameters (a feature on
-top of the Withdrawal Planner) BUILT + verified — see below. Moves the hardcoded statutory tables into a
-user-maintained DB table so they update yearly with a reminder, not a code change. Stacked on the planner
-→ P5. Awaiting review.**_
+_Updated at the end of each phase (CLAUDE.md). Current phase: **CMA editor (the last "all time-varying
+values DB-backed" piece) BUILT + verified — see below. With it, tax/estate AND capital-market assumptions
+are all user-maintainable yearly with reminders. Branch `feature/cma-editor` off main. Awaiting review.**_
+
+## CMA editor (feature) — completes "all time-varying values DB-backed"
+
+The 4th category from the user's directive: the consensus CMA was DB-backed (cma_sources) but had no edit
+UI. Now a user-scoped override + editor + reminder, mirroring the tax-params pattern. All green.
+- **`cmaparams.ts`** — `CmaParams` (per-class expected return / vol / corr, year-keyed) + JSON parse.
+- **`cma.ts`** — `applyCmaOverride(map, params)`: swaps the user's er/vol/corr per class and re-centers the
+  dispersion band around the new mean (width preserved). Verified: override us_equity → 9%/20%, band
+  8.5–9.5%; crypto untouched; reminder fires at stored-2025; silent before opt-in.
+- **`cma_params` table** (migration `20260625200000`, user-scoped, RLS owner-only) + `useCmaParams()`.
+  Override flows into the Monte Carlo via **Projection / Work Glide-Path / Tax (Withdrawal Planner)** tabs
+  (`applyCmaOverride(buildCma(...), override)`). database.types.ts block hand-added.
+- **Settings `CmaParamsEditor`** — per-class form (return % / vol % / corr) pre-filled from the seeded
+  consensus; year + save + "reset to consensus". Shows "using seeded consensus" vs "stored: {year}".
+- **Reminder** — alert engine `cma_params_stale`: nudges in the Risk digest once a CMA override exists and
+  its year lags the calendar year (deliberately silent before the user opts in).
+- **⚠️ Activation:** migration `20260625200000_cma_params.sql` **not yet applied** — run `supabase db push`
+  to enable saving (degrades gracefully to the seeded consensus until then).
 
 ## DB-backed tax parameters (feature)
 

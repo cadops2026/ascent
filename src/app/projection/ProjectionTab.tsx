@@ -5,7 +5,8 @@ import { PageHeader } from '../tabs/PhasePlaceholder'
 import { WealthPathChart } from './WealthPathChart'
 import { fmtPct } from '../../lib/format'
 import { computeBalanceSheet } from '../../lib/finance/networth'
-import { buildCma } from '../../lib/finance/cma'
+import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import { useCmaParams } from '../../lib/useCmaParams'
 import { buildInflationCurve } from '../../lib/finance/inflation'
 import { monteCarlo } from '../../lib/finance/montecarlo'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
@@ -62,7 +63,8 @@ export function ProjectionTab() {
     setInited(true)
   }, [loading, data, inited])
 
-  const cma = useMemo(() => buildCma(cmaRows, uniRows), [cmaRows, uniRows])
+  const { params: cmaOverride } = useCmaParams()
+  const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
   const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),

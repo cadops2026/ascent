@@ -727,6 +727,27 @@ export type Database = {
         }
         Relationships: []
       }
+      cma_params: {
+        Row: {
+          cma_year: number
+          params: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cma_year: number
+          params: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cma_year?: number
+          params?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       target_allocation: {
         Row: {
           asset_class: string

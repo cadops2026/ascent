@@ -6,6 +6,7 @@ import { supabaseConfigured, env } from '../../lib/env'
 import { useAuth } from '../../auth/AuthProvider'
 import { exportUserData, deleteAllUserData } from '../../lib/userData'
 import { TaxParamsEditor } from '../tax/TaxParamsEditor'
+import { CmaParamsEditor } from '../tax/CmaParamsEditor'
 
 function Row({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'teal' | 'amber' }) {
   const toneClass = tone === 'teal' ? 'text-teal' : tone === 'amber' ? 'text-amber' : 'text-ink'
@@ -38,6 +39,10 @@ export function Settings() {
 
       <div className="mt-5">
         <TaxParamsEditor />
+      </div>
+
+      <div className="mt-5">
+        <CmaParamsEditor />
       </div>
 
       <Panel label="Privacy" className="mt-5">
