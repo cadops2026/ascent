@@ -1,0 +1,80 @@
+@import 'tailwindcss';
+
+/* =========================================================================
+   ASCENT design system — "deep instrument" (spec §6)
+   Tokens become Tailwind utilities (bg-bg, text-ink, text-teal, font-mono, …)
+   and CSS variables (var(--color-teal)) for charts/SVG.
+   ========================================================================= */
+@theme {
+  /* Surfaces */
+  --color-bg: #0b0f14;
+  --color-panel: #111922;
+  --color-panel-hi: #161f2a;
+  --color-line: #232e3b;
+
+  /* Text */
+  --color-ink: #e8eef4;
+  --color-muted: #93a1b2;
+  --color-faint: #5c6878;
+
+  /* Accents — color is MEANING, one accent per view (invariant: design §6) */
+  --color-teal: #36c6b0; /* primary / median / positive */
+  --color-indigo: #7c93e8; /* secondary / band */
+  --color-amber: #e6a84b; /* caution */
+  --color-coral: #eb6a52; /* negative */
+
+  /* Faint accent washes for fills/bands */
+  --color-teal-soft: #36c6b01a;
+  --color-indigo-soft: #7c93e81f;
+  --color-amber-soft: #e6a84b1a;
+  --color-coral-soft: #eb6a521a;
+
+  /* Type — IBM Plex Mono numerals are the hero */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* Radii */
+  --radius-panel: 14px;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Mono numerals: tabular figures so columns of money align (spec §6 #1) */
+  .tnum {
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Uppercase micro-label with letter-spacing (spec §6) */
+  .micro-label {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    line-height: 1;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  ::selection {
+    background: var(--color-teal-soft);
+  }
+
+  /* Hairline scrollbars — data-dense but breathable */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+}
