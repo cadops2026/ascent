@@ -1,7 +1,76 @@
 # HANDOFF — after P0 (Foundation)
 
-_Updated at the end of each phase (CLAUDE.md). Current phase: **P4 (Work Glide-Path + principles
-overlay) built + verified. The differentiated spine P0–P4 is COMPLETE. Awaiting review.**_
+_Updated at the end of each phase (CLAUDE.md). Current phase: **P7 (Estate & Protection) core BUILT +
+verified — see below. P6 (Risk + alerts), the spine P0–P4, and a hardening pass precede it. P5 Tax was
+skipped per spec §8 (least differentiated). Awaiting review.**_
+
+## P7 — Estate & Protection (core BUILT)
+
+Builds out the full tab from the P1 net-to-heirs card. All green (`tsc -b`, `vite build`, `oxlint`);
+exposure-not-advice throughout (invariant #9 — model + flag + prompt the professional, never draft/file).
+- **Engines** (pure, tsx-verified, verifier deleted): `liquidity.ts` (liquid/marketable assets, SBLOC
+  capacity = 50% of *taxable* stock+ETF, estate-tax liquidity coverage/shortfall — borrow-don't-sell),
+  `insurance.ts` (per-kind coverage vs a rough modeled need → gap flags: term-life/umbrella amount-modeled,
+  disability/LTC/entity presence/age flags), `estatedocs.ts` (6-doc checklist + 3-yr review staleness +
+  gap count). Reuses `estate.ts` (net-to-heirs, OBBBA $15M/$30M, NJ $0). Verified: $42M MFJ → $4.8M tax →
+  $37.2M heirs; liquid $26M + $9M SBLOC covers it; umbrella gap $42M vs $5M; will reviewed 2020 → stale.
+- **Estate & Protection tab** (live): `app/estate/EstateProtectionTab.tsx` (container) + `ProtectionPanels.tsx`
+  (presentational, render-tested via throwaway harness with real engine output — all readouts paint).
+  Read-outs: estate-tax exposure + net-to-heirs, liquidity & SBLOC (covers-the-bill check), insurance-gap
+  table, 529 balance. Editors: filing status (→`profiles`), estate-doc checklist (per-row status +
+  last_reviewed → `estate_docs`, with stale badges), insurance policies add/remove (→`insurance_policies`).
+  Verified end-to-end (nav→shell→lazy import mounts; filing selector + empty-state OK).
+- **No migration** — consumes existing P0 tables (`insurance_policies`, `estate_docs`) + `accounts.tax_type`
+  ('529', 'taxable'). Added `InsurancePolicy`/`EstateDoc` type aliases to `lib/db.ts`.
+- **Deferred (flagged):** the **encrypted file vault upload** for estate docs needs a Storage bucket +
+  RLS (a migration, like the `statements` bucket) — the checklist tracks `file_ref` but upload is a
+  follow-up. Insurance editing is add/remove (inline edit is a follow-up). Liquidity SBLOC excludes
+  crypto/cash collateral by design.
+
+## P6 — Risk & Exposure + alert engine (core BUILT)
+
+The "measure exposure, stay calm" surface. All green (`tsc -b`, `vite build`, `oxlint`). Self-checked
+against the invariants (notably #1 one alert engine, #5 never forecast, #7 alerts never price-triggered,
+#11 residence out of stress).
+- **Engines** (pure, tsx-verified, then verifier deleted):
+  - `drawdownstress.ts` — four historical *analog* shocks (dot-com −41%, GFC −49%, 2022 rate, crypto
+    winter) applied per class to the investable portfolio → blast radius. Residence not stressed (#11).
+  - `exposure.ts` — single-name blast radius, factor exposure (equity-beta = corr-weighted share, read
+    from `asset_class_universe` not hardcoded — #3), and a **deterministic** narrative (templated, never
+    a forecast — #5). The *LLM* narration stays leashed to P8; this is the math layer it sits on.
+  - `mortgagebond.ts` — mortgage as a short bond: balance, rate, and Macaulay duration from the remaining
+    amortization stream; counsels against killing a sub-4% loan (spec §8).
+  - `alertengine.ts` — the one alert evaluator (#1): rebalance-band drift vs target, single-name ceiling,
+    theme/crypto ceiling, mortgage-payoff event. **Pre-committed thresholds; nothing reads a price delta
+    (#7).** Pure (no React/Supabase) so a future cron imports the same logic.
+- **Risk & Exposure tab** (live): `app/risk/RiskExposureTab.tsx` (data container) + `ExposurePanels.tsx`
+  (presentational, render-tested via a throwaway harness with real engine output — band/bars/digest all
+  paint). Surfaces: plain-terms exposure narrative, blast radius, factor exposure, drawdown-stress bars,
+  mortgage-as-short-bond, an editable **alert-threshold + target-allocation config** (writes
+  `target_allocation` + `alert_rules`), and a live-evaluated **monthly digest** with dismiss. Verified:
+  NVDA 25% blast −7.5%, GFC −49% deepest, mortgage duration 10.7y, 6 pre-committed alerts, dismiss works.
+- **No migration needed** — consumes existing P0 tables (`alert_rules`, `alerts`, `target_allocation`,
+  `rebalance_bands`). **Deferred (the remaining P6 piece):** the `evaluate-alerts` **cron** Edge Function
+  (server-side evaluation + persistence to `alerts` + scheduled push) — needs the pure `alertengine.ts`
+  vendored under `supabase/functions/_shared/` so it reuses the engine, not a re-implementation (#1).
+  Also still deferred: **sector** concentration (needs a company→sector source; crypto is the theme proxy
+  for now). Per-class rebalance-band overrides exist in the engine but the UI sets one global band.
+
+## Hardening pass (post-spine, 2026-06-25)
+Before adding new surface area, hardened the spine (all green: `tsc -b`, `vite build`, `oxlint`):
+- **Charts render-tested.** Extracted `app/projection/WealthPathChart.tsx` + `app/glidepath/PhaseBar.tsx`
+  as presentational components, then drove the *real* chart code with *real* engine output on synthetic
+  inputs (temporary dev harness, since the live UI is RLS-gated and renders empty under anon) —
+  screenshot-confirmed the P10–P90 band fan, teal median line, and three-phase bar paint correctly.
+  Closes the P3/P4 "populated charts not render-tested" note. Harness removed; extractions kept. (The
+  user's *own* live-data view still only they can confirm in an authed session.)
+- **Recharts code-split.** `AppShell` now `React.lazy` + `Suspense` per tab → initial bundle
+  806→408 kB (233→117 kB gz); Recharts is a separate ~84 kB-gz chunk loaded only when a chart tab opens
+  (off the sign-in path). Closes the bundle-size follow-up.
+- **Settings export + delete-all (invariant #10).** New `lib/userData.ts`: export all 16 user-scoped
+  tables → JSON download; confirm-gated (type `DELETE`) delete-all of rows + statement files. Shared
+  reference/cache tables deliberately excluded. Full *account* deletion (auth user) still needs a
+  service-role Edge Function — flagged in TODO.
 
 ## P4 — Work Glide-Path + principles overlay (BUILT)
 

@@ -67,14 +67,14 @@ export const TABS: TabDef[] = [
     id: 'risk',
     label: 'Risk & Exposure',
     phase: 'P6',
-    live: false,
+    live: true,
     blurb: 'Narrative exposure + blast radius, factor/sector, drawdown stress, alert-engine config.',
   },
   {
     id: 'estate',
     label: 'Estate & Protection',
     phase: 'P7',
-    live: false,
+    live: true,
     blurb: 'Estate-tax exposure, doc checklist + vault, insurance-gap readout, liquidity/SBLOC, 529s.',
   },
   {

@@ -13,6 +13,8 @@ export type SpendingBaseline = Row<'spending_baseline'>
 export type Profile = Row<'profiles'>
 export type QuoteCache = Row<'quote_cache'>
 export type StatementImport = Row<'statement_imports'>
+export type InsurancePolicy = Row<'insurance_policies'>
+export type EstateDoc = Row<'estate_docs'>
 
 /* Shape of one extracted candidate row in statement_imports.candidates (jsonb). */
 export interface HoldingCandidate {

@@ -12,17 +12,39 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
 - [x] **P3** Projection — consensus-CMA + inflation curve + Monte Carlo (Student-t crypto) + success prob.
 - [x] **P4** Work Glide-Path — years-of-work solver, sensitivity, maintain-wealth fork, principles overlay.
 
+## Done — P6 (Risk & Exposure + alert engine) — core
+- [x] **P6 (core)** — drawdown-stress / exposure+blast-radius / mortgage-as-short-bond / alert engines;
+      Risk & Exposure tab (narrative, blast radius, factor, stress, mortgage-bond, target+threshold config,
+      live monthly digest w/ dismiss). Pre-committed, never price-triggered (#7); deterministic narrative (#5).
+      *Remaining P6 piece:* the `evaluate-alerts` cron (below).
+
+## Done — P7 (Estate & Protection) — core
+- [x] **P7 (core)** — liquidity/SBLOC, insurance-gap, estate-doc-checklist engines; Estate & Protection
+      tab (estate-tax exposure + net-to-heirs, liquidity-to-pay, insurance-gap readout, 529s, doc checklist
+      w/ staleness, insurance add/remove). Model + flag + prompt the professional — never draft/file (#9).
+      *Remaining P7 piece:* the encrypted file-vault upload (below).
+
 ## Next phases
-- [ ] **P5 — Tax & Withdrawal**: account-type tagging, withdrawal sequencing, Roth conversion explorer
-      (IRMAA/ACA), RMDs, lot-level TLH + wash-sale, asset location, NIIT/AMT flags, charitable/DAF,
-      cash-balance/QBI flags. *Model + flag + coordinate — never file (invariant #9).*
-- [ ] **P6 — Risk & Exposure + alert engine**: narrative exposure + blast radius, factor/sector,
-      drawdown stress (2000/2008/2022/crypto-winter), mortgage-as-short-bond, **alert-engine config +
-      monthly digest** (pre-committed, threshold/event-driven, never price-triggered — invariant #7).
-- [ ] **P7 — Estate & Protection**: full estate-tax exposure + net-to-heirs tab, doc checklist + secure
-      vault, insurance-gap readout, liquidity/SBLOC, 529s. (Builds on the P1 net-to-heirs card.)
+- [ ] **P5 — Tax & Withdrawal** (skipped earlier, spec §8 — competitors do it well): account-type tagging,
+      withdrawal sequencing, Roth/IRMAA, RMDs, lot-level TLH + wash-sale, asset location, NIIT/AMT,
+      charitable/DAF, cash-balance/QBI flags. *Model + flag + coordinate — never file (invariant #9).*
 - [ ] **P8 — (optional)**: account aggregation (Plaid/SnapTrade), spouse sharing, **AI overlay**
       (grounded exposure narration + plan Q&A) + **macro-context overlay** (context-not-signal, calm).
+
+## P7 follow-ups
+- [ ] **Estate-doc encrypted vault upload** — needs a Storage bucket + RLS (a migration, like the
+      `statements` bucket); the checklist already tracks `file_ref`, upload UI is the remaining piece.
+- [ ] Insurance policy **inline edit** (today: add/remove). Liquidity SBLOC could optionally include a
+      crypto haircut (excluded by design today).
+
+## P6 follow-ups
+- [ ] **`evaluate-alerts` cron Edge Function** — server-side eval + persist to `alerts` (dismissed_at) +
+      scheduled push. Vendor `alertengine.ts` under `supabase/functions/_shared/` so it reuses the one
+      engine (invariant #1), never re-implements the thresholds.
+- [ ] **Sector concentration** in the alert engine + Risk tab (needs a company→sector source; crypto is the
+      theme proxy today). Per-class rebalance-band override UI (engine already supports it; UI sets a global band).
+- [ ] **Dashboard hero** can now light up — narrative exposure (P2/P6) + success probability (P3) exist, so
+      the "arrives P2/P3" placeholders are stale. Wire the real hero (runs MC + look-through like the tabs do).
 
 ## P2 deferrals (need data we don't hold yet — sequence with their source)
 - [ ] Sector concentration (needs a company→sector source, e.g. FMP profiles).
@@ -31,14 +53,24 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
 - [ ] Dividends.
 - [ ] Diversification-gap scanner (off-dashboard; needs P3 correlation/CMA data — now available).
 
+## Hardening pass (spine, 2026-06-25) — DONE
+- [x] **Render-test the populated charts** — extracted `WealthPathChart` (Projection) + `PhaseBar`
+      (Glide-Path) as presentational components; drove the *real* chart code with *real* engine output
+      (monteCarlo/solveYearsOfWork on synthetic inputs) via a temporary dev harness; screenshot-confirmed
+      the P10–P90 band fan + teal median line + three-phase bar render. Harness removed; extractions kept.
+      *(Still open: confirm with the user's own live holdings in an authed session — only they can.)*
+- [x] **Code-split Recharts** — `React.lazy` + `Suspense` per tab in `AppShell`; initial bundle
+      806→408 kB (233→117 kB gz). Recharts is now a separate ~84 kB-gz chunk, off the sign-in path.
+- [x] **Settings: data export + delete-all** (invariant #10) — `lib/userData.ts`: export all 16
+      user-scoped tables → JSON download; confirm-gated (type DELETE) delete-all of rows + statement
+      files. Mount-verified; shared-cache tables deliberately excluded.
+
 ## Follow-ups / tech debt
-- [ ] Live-test the Projection wealth chart + Glide-Path solved UI with a real session (math is tsx-verified;
-      the populated charts haven't been render-tested — see `HANDOFF.md` note).
 - [ ] Two-stage CMA path (near-term valuation-adjusted → long-run) once near-term data is seeded.
 - [ ] Full horizon-matched inflation *forward* rates in the Monte Carlo (currently uses the curve point per year).
 - [ ] Confirm exact FMP / FRED endpoint shapes once keys are set (functions read defensively but untested live).
-- [ ] Recharts bundle (~720 kB / 211 kB gz) — code-split candidate.
-- [ ] Settings: data export + delete-all controls (privacy; deletion supported by `on delete cascade`).
+- [ ] Full account deletion (auth user + cascade) — needs a service-role Edge Function; client delete-all
+      wipes data rows + files but leaves the (empty) login.
 - [ ] Decide auth method (currently magic link) — switch to email+password if preferred.
 
 ## Keys to set for full live testing (all optional; graceful without)

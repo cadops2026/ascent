@@ -1,15 +1,24 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { TABS } from './nav'
 import type { TabId } from './nav'
 import { Wordmark } from './Wordmark'
 import { useAuth } from '../auth/AuthProvider'
-import { Dashboard } from './tabs/Dashboard'
-import { Settings } from './tabs/Settings'
 import { PhasePlaceholder } from './tabs/PhasePlaceholder'
-import { BalanceSheet } from './balance/BalanceSheet'
-import { LookThroughTab } from './lookthrough/LookThroughTab'
-import { ProjectionTab } from './projection/ProjectionTab'
-import { WorkGlidePathTab } from './glidepath/WorkGlidePathTab'
+
+// Lazy-loaded so the chart-heavy tabs (Recharts) and their engines stay out of
+// the initial/sign-in bundle — each tab is fetched only when first opened.
+const Dashboard = lazy(() => import('./tabs/Dashboard').then((m) => ({ default: m.Dashboard })))
+const Settings = lazy(() => import('./tabs/Settings').then((m) => ({ default: m.Settings })))
+const BalanceSheet = lazy(() => import('./balance/BalanceSheet').then((m) => ({ default: m.BalanceSheet })))
+const LookThroughTab = lazy(() => import('./lookthrough/LookThroughTab').then((m) => ({ default: m.LookThroughTab })))
+const ProjectionTab = lazy(() => import('./projection/ProjectionTab').then((m) => ({ default: m.ProjectionTab })))
+const WorkGlidePathTab = lazy(() => import('./glidepath/WorkGlidePathTab').then((m) => ({ default: m.WorkGlidePathTab })))
+const RiskExposureTab = lazy(() => import('./risk/RiskExposureTab').then((m) => ({ default: m.RiskExposureTab })))
+const EstateProtectionTab = lazy(() => import('./estate/EstateProtectionTab').then((m) => ({ default: m.EstateProtectionTab })))
+
+function TabFallback() {
+  return <p className="py-16 text-center text-sm text-faint">Loading…</p>
+}
 
 export function AppShell() {
   const [active, setActive] = useState<TabId>('dashboard')
@@ -71,21 +80,27 @@ export function AppShell() {
 
         {/* Content */}
         <main className="min-w-0 flex-1 p-5 md:p-8">
-          {tab.id === 'dashboard' ? (
-            <Dashboard />
-          ) : tab.id === 'balance' ? (
-            <BalanceSheet />
-          ) : tab.id === 'lookthrough' ? (
-            <LookThroughTab />
-          ) : tab.id === 'projection' ? (
-            <ProjectionTab />
-          ) : tab.id === 'glide' ? (
-            <WorkGlidePathTab />
-          ) : tab.id === 'settings' ? (
-            <Settings />
-          ) : (
-            <PhasePlaceholder def={tab} />
-          )}
+          <Suspense fallback={<TabFallback />}>
+            {tab.id === 'dashboard' ? (
+              <Dashboard />
+            ) : tab.id === 'balance' ? (
+              <BalanceSheet />
+            ) : tab.id === 'lookthrough' ? (
+              <LookThroughTab />
+            ) : tab.id === 'projection' ? (
+              <ProjectionTab />
+            ) : tab.id === 'glide' ? (
+              <WorkGlidePathTab />
+            ) : tab.id === 'risk' ? (
+              <RiskExposureTab />
+            ) : tab.id === 'estate' ? (
+              <EstateProtectionTab />
+            ) : tab.id === 'settings' ? (
+              <Settings />
+            ) : (
+              <PhasePlaceholder def={tab} />
+            )}
+          </Suspense>
         </main>
       </div>
     </div>
