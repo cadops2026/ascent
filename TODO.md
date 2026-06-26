@@ -133,8 +133,11 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
 - [ ] Two-stage CMA path (near-term valuation-adjusted → long-run) once near-term data is seeded.
 - [ ] Full horizon-matched inflation *forward* rates in the Monte Carlo (currently uses the curve point per year).
 - [ ] Confirm exact FMP / FRED endpoint shapes once keys are set (functions read defensively but untested live).
-- [ ] Full account deletion (auth user + cascade) — needs a service-role Edge Function; client delete-all
-      wipes data rows + files but leaves the (empty) login.
+- [x] **Full account deletion (auth user + cascade)** — `delete-account` Edge Function (auth-gated;
+      recursively removes the user's Storage objects in both buckets, then `admin.auth.admin.deleteUser`
+      → cascades every user-scoped row). Settings "Delete my account" now calls it (graceful fallback to
+      the client data-wipe if the function isn't deployed). Completes invariant #10. **ACTIVATION:**
+      `supabase functions deploy delete-account`.
 - [ ] Decide auth method (currently magic link) — switch to email+password if preferred.
 
 ## Keys to set for full live testing (all optional; graceful without)

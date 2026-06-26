@@ -64,3 +64,23 @@ export async function deleteAllUserData(userId: string): Promise<void> {
     await supabase.storage.from(STATEMENTS_BUCKET).remove(files.map((f) => `${userId}/${f.name}`))
   }
 }
+
+/**
+ * Full account deletion (invariant #10): the `delete-account` Edge Function removes
+ * the user's Storage files in both private buckets and deletes the auth user, which
+ * cascades every user-scoped row — removing the login itself, which the client can't
+ * do. Throws with a clear message if the function isn't deployed (the caller can
+ * fall back to {@link deleteAllUserData}).
+ */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase.functions.invoke('delete-account')
+  if (!error) return
+  let msg = error.message
+  try {
+    const j = await (error as { context?: Response }).context?.json()
+    if (j?.error) msg = j.error
+  } catch {
+    /* keep the generic message */
+  }
+  throw new Error(msg)
+}

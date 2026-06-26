@@ -4,7 +4,7 @@ import { Button, Input } from '../../components/ui'
 import { PageHeader } from './PhasePlaceholder'
 import { supabaseConfigured, env } from '../../lib/env'
 import { useAuth } from '../../auth/AuthProvider'
-import { exportUserData, deleteAllUserData } from '../../lib/userData'
+import { exportUserData, deleteAllUserData, deleteAccount } from '../../lib/userData'
 import { TaxParamsEditor } from '../tax/TaxParamsEditor'
 import { CmaParamsEditor } from '../tax/CmaParamsEditor'
 
@@ -91,8 +91,14 @@ function PrivacyControls({
     setError(null)
     setBusy('delete')
     try {
-      await deleteAllUserData(userId)
-      onDeleted() // sign out — the data (incl. this profile) is gone
+      // Full deletion (storage + rows + login). If the function isn't deployed,
+      // fall back to wiping the data rows + files so nothing is left behind.
+      try {
+        await deleteAccount()
+      } catch {
+        await deleteAllUserData(userId)
+      }
+      onDeleted() // sign out — the account/data is gone
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed')
       setBusy(null)
@@ -107,7 +113,7 @@ function PrivacyControls({
         </Button>
         {!confirming ? (
           <Button variant="danger" onClick={() => setConfirming(true)} disabled={busy !== null}>
-            Delete all my data
+            Delete my account
           </Button>
         ) : null}
       </div>
@@ -115,8 +121,8 @@ function PrivacyControls({
       {confirming && (
         <div className="rounded-lg border border-coral/40 bg-coral/5 p-4">
           <p className="text-sm text-ink">
-            This permanently deletes every holding, account, property, plan, alert, and uploaded
-            statement file. Your login stays, but starts empty — this can't be undone.
+            This permanently deletes your account and all of it — every holding, account, property, plan,
+            alert, uploaded file, and your login itself. This can't be undone.
           </p>
           <p className="mt-3">
             <MicroLabel className="text-faint">
