@@ -54,7 +54,11 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
 ## P5 follow-ups
 - [ ] Lot-level TLH + **wash-sale** date checks (today: holding-level from `cost_basis`).
 - [ ] Wire real income/MAGI (when available) so NIIT/AMT/IRMAA move from prompts to computed.
-- [ ] Re-verify the approx 2026 brackets/IRMAA/std-deduction against final IRS/SSA tables.
+- [x] **Re-verify the 2026 brackets/IRMAA/std-deduction vs final tables** — done against IRS Rev. Proc.
+      2025-32 + CMS/SSA 2026. Corrected all bracket thresholds (3 schedules), standard deduction
+      (16,100/32,200/24,150), LTCG breakpoints, and Part B IRMAA surcharges. Fixed a real bug: the married
+      IRMAA top-finite tier is $750k, not 2×$500k=$1M (added an explicit `magiUpToMarried`). RMD table +
+      NIIT + estate exemption already correct. Engine-verified (ordinaryTax/ltcg/irmaa hand-calcs).
 
 ## P7 follow-ups
 - [x] **Estate-doc encrypted vault upload** — private `estate-docs` Storage bucket + owner-only RLS

@@ -50,7 +50,10 @@ export function irmaaTier(
   const tiers = p.irmaaSingle
   for (let i = 0; i < tiers.length; i++) {
     const t = tiers[i]!
-    const bound = t.magiUpTo === Infinity ? Infinity : married ? t.magiUpTo * 2 : t.magiUpTo
+    // Married threshold is 2× single except where set explicitly (the top finite
+    // tier: single $500k → married $750k, not $1M).
+    const bound =
+      t.magiUpTo === Infinity ? Infinity : married ? (t.magiUpToMarried ?? t.magiUpTo * 2) : t.magiUpTo
     if (magi <= bound) return { index: i, surcharge: t.monthlySurcharge, threshold: bound }
   }
   const last = tiers[tiers.length - 1]!

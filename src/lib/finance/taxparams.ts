@@ -15,8 +15,11 @@ export interface BracketRow {
   rate: number
 }
 export interface IrmaaRow {
-  magiUpTo: number // single thresholds; mfj doubled below the top (Infinity = top)
-  monthlySurcharge: number
+  magiUpTo: number // single MAGI threshold (Infinity = top tier)
+  /** mfj threshold when it isn't simply 2× the single one (the top finite tier:
+   *  single $500k → married $750k, not $1M). Falls back to 2× when omitted. */
+  magiUpToMarried?: number
+  monthlySurcharge: number // Part B monthly IRMAA surcharge (total premium − base)
 }
 
 export interface TaxParams {
@@ -33,38 +36,43 @@ export interface TaxParams {
   estateTopRate: number
 }
 
+// Verified against IRS Rev. Proc. 2025-32 (tax-year-2026 inflation adjustments,
+// post-OBBBA) and CMS/SSA 2026 Medicare figures. Brackets store each band's upper
+// bound; LTCG store the 0%/15% ceilings; IRMAA store single thresholds + Part B
+// surcharge. Re-verify each fall when the next Rev. Proc. / CMS notice publishes.
 export const DEFAULT_TAX_PARAMS: TaxParams = {
   year: 2026,
   brackets: {
     single: [
-      { upTo: 12_000, rate: 0.1 }, { upTo: 48_900, rate: 0.12 }, { upTo: 104_100, rate: 0.22 },
-      { upTo: 198_800, rate: 0.24 }, { upTo: 252_400, rate: 0.32 }, { upTo: 630_600, rate: 0.35 },
+      { upTo: 12_400, rate: 0.1 }, { upTo: 50_400, rate: 0.12 }, { upTo: 105_700, rate: 0.22 },
+      { upTo: 201_775, rate: 0.24 }, { upTo: 256_225, rate: 0.32 }, { upTo: 640_600, rate: 0.35 },
       { upTo: Infinity, rate: 0.37 },
     ],
     mfj: [
-      { upTo: 24_000, rate: 0.1 }, { upTo: 97_800, rate: 0.12 }, { upTo: 208_300, rate: 0.22 },
-      { upTo: 397_650, rate: 0.24 }, { upTo: 504_900, rate: 0.32 }, { upTo: 757_000, rate: 0.35 },
+      { upTo: 24_800, rate: 0.1 }, { upTo: 100_800, rate: 0.12 }, { upTo: 211_400, rate: 0.22 },
+      { upTo: 403_550, rate: 0.24 }, { upTo: 512_450, rate: 0.32 }, { upTo: 768_700, rate: 0.35 },
       { upTo: Infinity, rate: 0.37 },
     ],
     hoh: [
-      { upTo: 17_150, rate: 0.1 }, { upTo: 65_400, rate: 0.12 }, { upTo: 104_100, rate: 0.22 },
-      { upTo: 198_800, rate: 0.24 }, { upTo: 252_400, rate: 0.32 }, { upTo: 630_600, rate: 0.35 },
+      { upTo: 17_700, rate: 0.1 }, { upTo: 67_450, rate: 0.12 }, { upTo: 105_700, rate: 0.22 },
+      { upTo: 201_775, rate: 0.24 }, { upTo: 256_200, rate: 0.32 }, { upTo: 640_600, rate: 0.35 },
       { upTo: Infinity, rate: 0.37 },
     ],
   },
-  standardDeduction: { single: 15_750, mfs: 15_750, mfj: 31_500, qw: 31_500, hoh: 23_600 },
+  standardDeduction: { single: 16_100, mfs: 16_100, mfj: 32_200, qw: 32_200, hoh: 24_150 },
   ltcg: {
-    single: { zeroTop: 49_000, fifteenTop: 545_000 },
-    mfj: { zeroTop: 98_000, fifteenTop: 613_000 },
-    hoh: { zeroTop: 66_000, fifteenTop: 579_000 },
+    single: { zeroTop: 49_450, fifteenTop: 545_500 },
+    mfj: { zeroTop: 98_900, fifteenTop: 613_700 },
+    hoh: { zeroTop: 66_200, fifteenTop: 579_600 },
   },
+  // Part B surcharge = total premium − $202.90 base (1.4×/2.0×/2.6×/3.2×/3.4×).
   irmaaSingle: [
     { magiUpTo: 109_000, monthlySurcharge: 0 },
-    { magiUpTo: 137_000, monthlySurcharge: 86 },
-    { magiUpTo: 171_000, monthlySurcharge: 215 },
-    { magiUpTo: 205_000, monthlySurcharge: 344 },
-    { magiUpTo: 500_000, monthlySurcharge: 474 },
-    { magiUpTo: Infinity, monthlySurcharge: 515 },
+    { magiUpTo: 137_000, monthlySurcharge: 81.2 },
+    { magiUpTo: 171_000, monthlySurcharge: 202.9 },
+    { magiUpTo: 205_000, monthlySurcharge: 324.6 },
+    { magiUpTo: 500_000, magiUpToMarried: 750_000, monthlySurcharge: 446.4 },
+    { magiUpTo: Infinity, monthlySurcharge: 487 },
   ],
   rmdDivisor: {
     73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1, 80: 20.2, 81: 19.4, 82: 18.5,
