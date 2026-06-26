@@ -1,5 +1,31 @@
 # HANDOFF — after P0 (Foundation)
 
+## evaluate-alerts cron (completes P6) — BUILT, branch `feature/evaluate-alerts-cron` (stacked on the hero)
+
+The scheduled server-side counterpart of the in-app digest. Reuses the ONE pure alert engine (invariant #1)
+and reads no price delta — pre-committed, threshold/event-driven, low-frequency (invariant #7).
+- **Vendored engines** under `supabase/functions/_shared/finance/` (`types.ts` + `amortization.ts` +
+  `networth.ts` + `lookthrough.ts` + `alertengine.ts`) — Deno-faithful copies of `src/lib/finance/*`
+  (logic byte-identical; only import extensions + structural DB-row types differ). Headers say "keep in
+  sync". `deno check` clean; run-verified in Deno on a synthetic portfolio (3 drift / NVDA single-name
+  HIGH at 31% / crypto theme / tax+cma stale — all correct severities).
+- **`supabase/functions/evaluate-alerts/index.ts`** — gated by `CRON_SECRET` (header `x-cron-secret`),
+  service-role. Loads global `quote_cache` + `etf_holdings` once; iterates opted-in users (an `alert_rules`
+  row); per user rebuilds the balance sheet + look-through + mortgage payoff-months, reads latest
+  `tax_parameters`/`cma_params` year, runs `evaluateAlerts`, then persists to `alerts` with: **window-
+  dedupe** (skip an alert seen within its cadence window — respects a manual dismiss, avoids dup rows) +
+  **auto-resolve** (set `dismissed_at` on open alerts that no longer breach). `deno check` passes against
+  the real supabase-js types. Browser never calls it (invariant #10).
+- **ACTIVATION (not done — needs your OK to deploy/secrets):** `supabase functions deploy evaluate-alerts`
+  · `supabase secrets set CRON_SECRET=<random>` · mirror that secret into Vault · run
+  `supabase/functions/evaluate-alerts/schedule.sql` in the SQL editor (pg_cron + pg_net, monthly). Manual
+  test: POST the function URL with the `x-cron-secret` header → `{evaluated, inserted, resolved}`.
+- **Deferred (product call needed):** actual **push delivery** (email/web-push channel — ask before
+  picking one) and wiring the app to **read** persisted alerts (the Risk tab still evaluates live today,
+  which is fine). **Not runtime-tested end-to-end** (no live DB in the sandbox) — verify on first deploy.
+
+
+
 _Updated at the end of each phase (CLAUDE.md). Current phase: **CMA editor (the last "all time-varying
 values DB-backed" piece) BUILT + verified — see below. With it, tax/estate AND capital-market assumptions
 are all user-maintainable yearly with reminders. Branch `feature/cma-editor` off main. Awaiting review.**_

@@ -63,9 +63,16 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       crypto haircut (excluded by design today).
 
 ## P6 follow-ups
-- [ ] **`evaluate-alerts` cron Edge Function** — server-side eval + persist to `alerts` (dismissed_at) +
-      scheduled push. Vendor `alertengine.ts` under `supabase/functions/_shared/` so it reuses the one
-      engine (invariant #1), never re-implements the thresholds.
+- [x] **`evaluate-alerts` cron Edge Function** — built. Vendors the pure engines (amortization/networth/
+      lookthrough/alertengine) under `supabase/functions/_shared/finance/` (invariant #1 — same engine,
+      Deno-faithful copy; `deno check` clean + engine path run-verified on a synthetic portfolio). The
+      function gates on `CRON_SECRET`, iterates opted-in users (those with an `alert_rules` row), rebuilds
+      each balance sheet + look-through from current holdings, runs `evaluateAlerts`, and persists the
+      breaching set to `alerts` with calm window-dedupe (won't re-nag a dismissed alert within its cadence)
+      + auto-resolve (clears alerts that no longer breach). `schedule.sql` template + activation steps in
+      HANDOFF. **ACTIVATION:** deploy the function, `supabase secrets set CRON_SECRET=…`, mirror it into
+      Vault, then run `schedule.sql`. **Deferred (need a product call):** actual *push delivery* (email/web-
+      push channel — ask) and wiring the app to read persisted alerts (today the Risk tab still evaluates live).
 - [ ] **Sector concentration** in the alert engine + Risk tab (needs a company→sector source; crypto is the
       theme proxy today). Per-class rebalance-band override UI (engine already supports it; UI sets a global band).
 - [x] **Dashboard hero** — lit up. `DashboardHero` (presentational, render-tested via throwaway harness
