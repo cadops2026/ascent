@@ -1,5 +1,21 @@
 # HANDOFF — after P0 (Foundation)
 
+## P8 AI overlay (grounded) — BUILT, branch `feature/ai-advisor-overlay` (off main)
+
+The marquee P8 feature (spec §2). Narrates the user's OWN exposure + answers plan questions, grounded only
+in the balance sheet + engines; explains/quantifies, never forecasts (#5) or overrides the math (#8).
+- **`supabase/functions/advisor/index.ts`** — auth-gated (rejects anon so the key can't be burned), reads
+  `ANTHROPIC_API_KEY` from secrets (browser→Supabase only, #10), calls Claude (`claude-opus-4-8`, override
+  via `ANTHROPIC_MODEL`). System prompt hard-codes the guardrails: use ONLY the provided context numbers,
+  never predict/recommend trades, math wins on conflict, calm/anti-reactive, prompt the professional for
+  tax/estate/legal (#9). Modes `qa` + `narrate`. Returns `{ answer }` or a clear error. `deno check` clean.
+- **`AdvisorPanel`** on the Dashboard assembles a compact grounded context (net worth, allocation, top
+  single names, success prob, P10/P25/P90 end-wealth, ages/spend, deterministic narrative) and posts to the
+  function. Split into `AdvisorView` (presentational, render-tested: idle / answer / no-key states).
+  Degrades gracefully — clear amber notice when the key isn't set.
+- **ACTIVATION (needs your OK):** `supabase functions deploy advisor` + `supabase secrets set
+  ANTHROPIC_API_KEY=…` (same key the statement import uses). Not runtime-tested e2e (no key in sandbox).
+
 ## Estate-doc vault upload — BUILT, branch `feature/estate-doc-vault` (off main)
 
 Completes the deferred P7 piece. A private, owner-only Storage bucket for wills/trusts/POAs/directives —

@@ -47,9 +47,20 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       override flows into Projection / Glide / Withdrawal Planner. **Run `supabase db push` to apply the
       cma_params migration.** Remaining: verify the approx-2026 tax figures vs final IRS/SSA tables.
 
-## Next phases
-- [ ] **P8 — (optional)**: account aggregation (Plaid/SnapTrade), spouse sharing, **AI overlay**
-      (grounded exposure narration + plan Q&A) + **macro-context overlay** (context-not-signal, calm).
+## Next phases — P8 (optional)
+- [x] **AI overlay (grounded)** — `advisor` Edge Function → Claude (`claude-opus-4-8`, overridable;
+      ANTHROPIC_KEY in secrets; browser→Supabase only #10). Auth-gated. System prompt enforces the
+      invariants: explains/quantifies the user's OWN context, never forecasts (#5), never overrides the
+      math (#8), calm/anti-reactive, prompts the professional for tax/estate (#9). `AdvisorPanel` on the
+      Dashboard assembles a compact grounded context (alloc, top names, success prob, end-wealth band,
+      ages/spend, narrative) + Ask / "Explain my exposure". Degrades gracefully with no key. Deno-checked;
+      AdvisorView render-tested (idle/answer/no-key). **ACTIVATION:** `supabase functions deploy advisor`
+      + `supabase secrets set ANTHROPIC_API_KEY=…`.
+- [ ] **Macro-context overlay** (context-not-signal, calm) — frames long-run CMA + inflation against your
+      exposure with a don't-overreact reminder; deterministic (no live sentiment). Next.
+- [ ] **Account aggregation** (Plaid/SnapTrade) — deferred MVP; needs the provider OAuth + a `sync-accounts`
+      function. Blocked on you (provider account/keys).
+- [ ] **Spouse sharing** — the `share_with[]` column exists; needs RLS share policies + invite UI.
 
 ## P5 follow-ups
 - [ ] Lot-level TLH + **wash-sale** date checks (today: holding-level from `cost_basis`).

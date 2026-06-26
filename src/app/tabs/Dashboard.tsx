@@ -21,6 +21,7 @@ import type { EtfHoldingRow } from '../../lib/finance/lookthrough'
 import { runAllStress } from '../../lib/finance/drawdownstress'
 import { factorExposure, exposureNarrative } from '../../lib/finance/exposure'
 import { DashboardHero } from './DashboardHero'
+import { AdvisorPanel } from './AdvisorPanel'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { AllocationPie } from '../balance/AllocationPie'
 
@@ -128,6 +129,28 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
   const top = lt.singleNameMax
   const empty = data.holdings.length === 0 && data.realEstate.length === 0
 
+  // Compact, grounded context for the AI overlay — the user's OWN numbers only.
+  const r3 = (x: number) => Math.round(x * 1000) / 1000
+  const advisorContext = useMemo(() => {
+    if (!mc) return null
+    return {
+      netWorth: Math.round(bs.netWorth),
+      investable: Math.round(bs.investable),
+      netToHeirs: Math.round(estate.netToHeirs),
+      allocation: bs.byClass.map((s) => ({ class: s.class, pctOfInvestable: r3(s.pct) })),
+      largestSingleName: top ? { name: top.name, pctOfInvestable: r3(top.pct) } : null,
+      topNames: lt.topNames.slice(0, 5).map((n) => ({ name: n.name, pctOfInvestable: r3(n.pct) })),
+      successProbability: r3(mc.successProbability),
+      endWealthRealDollars: { p10: Math.round(mc.terminal.p10), p25: Math.round(mc.terminal.p25), p90: Math.round(mc.terminal.p90) },
+      currentAge,
+      retireAge,
+      planToAge,
+      annualSpendInRetirement: Math.round(withdrawal),
+      exposureNarrative: narrative.map((l) => l.text),
+      inflationCurveSource: infl.source,
+    }
+  }, [mc, bs, estate.netToHeirs, top, lt.topNames, currentAge, retireAge, planToAge, withdrawal, narrative, infl.source])
+
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader title="Dashboard" />
@@ -155,6 +178,9 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
           </p>
         </Panel>
       )}
+
+      {/* Grounded AI overlay — explains your exposure, never forecasts (#5/#8) */}
+      <AdvisorPanel context={advisorContext} />
 
       {/* Real net worth — calm, no daily delta (invariant #6) */}
       <Panel className="mt-5">
