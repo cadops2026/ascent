@@ -15,8 +15,9 @@ export interface ExposurePanelsProps {
   mortgageBonds: MortgageBondView
   alerts: EvaluatedAlert[]
   cadence: string
+  /** `${kind}|${title}` keys already dismissed (persisted across sessions). */
   dismissed: Set<string>
-  onDismiss: (key: string) => void
+  onDismiss: (a: EvaluatedAlert) => void
 }
 
 /**
@@ -35,7 +36,7 @@ export function ExposurePanels({
   onDismiss,
 }: ExposurePanelsProps) {
   const maxLoss = Math.max(...stress.map((s) => s.lossPct), 0.0001)
-  const visibleAlerts = alerts.filter((a) => !dismissed.has(a.kind + a.title))
+  const visibleAlerts = alerts.filter((a) => !dismissed.has(`${a.kind}|${a.title}`))
 
   return (
     <>
@@ -153,7 +154,7 @@ export function ExposurePanels({
         ) : (
           <div className="space-y-2">
             {visibleAlerts.map((a) => (
-              <AlertStrip key={a.kind + a.title} tone={sevTone(a.severity)} onDismiss={() => onDismiss(a.kind + a.title)}>
+              <AlertStrip key={`${a.kind}|${a.title}`} tone={sevTone(a.severity)} onDismiss={() => onDismiss(a)}>
                 <span className="text-ink">{a.title}.</span> <span className="text-muted">{a.detail}</span>
               </AlertStrip>
             ))}

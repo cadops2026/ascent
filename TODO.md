@@ -72,7 +72,14 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       + auto-resolve (clears alerts that no longer breach). `schedule.sql` template + activation steps in
       HANDOFF. **ACTIVATION:** deploy the function, `supabase secrets set CRON_SECRET=…`, mirror it into
       Vault, then run `schedule.sql`. **Deferred (need a product call):** actual *push delivery* (email/web-
-      push channel — ask) and wiring the app to read persisted alerts (today the Risk tab still evaluates live).
+      push channel — ask).
+- [x] **Read persisted alerts in-app** — `useAlerts` hook reads the `alerts` table (RLS-scoped). Risk tab
+      keeps live eval but now filters by **persisted dismisses** and writes a dismiss to `alerts.dismissed_at`
+      (cross-session; replaces the in-memory Set). Dashboard shows a calm `DashboardDigestStrip` from the
+      persisted *open* alerts (tone by max severity, links to Risk), sparse/silent when empty (#7). Same
+      `${kind}|${title}` keying + 28-day window as the cron, so the in-app and scheduled digests agree (#1).
+      Render-verified via throwaway harness (high→coral / info→indigo / empty→silent). **Follow-up:** dismiss
+      uses a `payload->>title` match + insert-if-none; lot-level history pruning is a later concern.
 - [ ] **Sector concentration** in the alert engine + Risk tab (needs a company→sector source; crypto is the
       theme proxy today). Per-class rebalance-band override UI (engine already supports it; UI sets a global band).
 - [x] **Dashboard hero** — lit up. `DashboardHero` (presentational, render-tested via throwaway harness

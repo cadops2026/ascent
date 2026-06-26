@@ -83,7 +83,7 @@ export function AppShell() {
         <main className="min-w-0 flex-1 p-5 md:p-8">
           <Suspense fallback={<TabFallback />}>
             {tab.id === 'dashboard' ? (
-              <Dashboard />
+              <Dashboard onNavigate={setActive} />
             ) : tab.id === 'balance' ? (
               <BalanceSheet />
             ) : tab.id === 'lookthrough' ? (

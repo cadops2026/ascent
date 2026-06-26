@@ -16,6 +16,7 @@ import { ExposurePanels } from './ExposurePanels'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { useTaxParams } from '../../lib/useTaxParams'
 import { useCmaParams } from '../../lib/useCmaParams'
+import { useAlerts } from '../../lib/useAlerts'
 import { useAuth } from '../../auth/AuthProvider'
 
 /** AssetClass → asset_class_universe key (corr_to_us_equity lives there, invariant #3). */
@@ -50,7 +51,7 @@ export function RiskExposureTab() {
   const [cfgLoaded, setCfgLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveNote, setSaveNote] = useState<string | null>(null)
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const { dismissedKeys, dismiss } = useAlerts() // dismisses persist across sessions
 
   useEffect(() => {
     void (async () => {
@@ -196,8 +197,8 @@ export function RiskExposureTab() {
             mortgageBonds={mortgageBonds}
             alerts={alerts}
             cadence={cadence}
-            dismissed={dismissed}
-            onDismiss={(key) => setDismissed((d) => new Set(d).add(key))}
+            dismissed={dismissedKeys}
+            onDismiss={(a) => void dismiss(a)}
           />
 
           {/* Alert-engine config — your pre-committed thresholds */}

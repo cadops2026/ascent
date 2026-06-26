@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Panel, Figure, MicroLabel } from '../../components/ui'
 import { PageHeader } from './PhasePlaceholder'
+import type { TabId } from '../nav'
+import { useAlerts } from '../../lib/useAlerts'
+import { DashboardDigestStrip } from './DashboardDigestStrip'
 import { fmtMoneyCompact } from '../../lib/format'
 import { computeBalanceSheet } from '../../lib/finance/networth'
 import type { AssetClass } from '../../lib/finance/networth'
@@ -39,8 +42,9 @@ function ageFromDob(dob: string | null | undefined): number | null {
  * the Projection tab) and the look-through → factor → narrative chain (same as the
  * Risk tab). Nothing is re-implemented here (invariant #1). No daily red/green delta.
  */
-export function Dashboard() {
+export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) {
   const { data, loading } = useBalanceSheet()
+  const { open: openAlerts } = useAlerts()
   const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
   const [uniRows, setUniRows] = useState<UniverseRow[]>([])
   const [inflRows, setInflRows] = useState<InflRow[]>([])
@@ -127,6 +131,9 @@ export function Dashboard() {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader title="Dashboard" />
+
+      {/* Calm digest pointer — the delivered (persisted) alerts, sparse (#7) */}
+      <DashboardDigestStrip alerts={openAlerts} onNavigate={onNavigate} />
 
       {/* The hero — exposure + success probability (invariant #6) */}
       {mc ? (

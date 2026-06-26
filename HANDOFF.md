@@ -1,5 +1,21 @@
 # HANDOFF — after P0 (Foundation)
 
+## Read persisted alerts in-app — BUILT, branch `feature/read-persisted-alerts` (stacked on the cron)
+
+Closes the loop on the cron: the app now reads the `alerts` table and persists dismisses across sessions.
+- **`src/lib/useAlerts.ts`** — RLS-scoped read of `alerts` (last 90d). Exposes `open` (un-dismissed, for the
+  Dashboard), `dismissedKeys` (`${kind}|${title}` dismissed within a 28-day window, matching the cron),
+  and `dismiss(alert)` which resolves an existing open row (`payload->>title` match) or inserts a dismissed
+  row — so a dismiss survives reload AND the cron's window-dedupe won't re-insert it.
+- **Risk tab** keeps live evaluation (instant, reflects threshold edits) but now filters the digest by
+  `dismissedKeys` and persists dismisses via the hook (replaced the in-memory `Set`). `ExposurePanels`
+  re-keyed to `${kind}|${title}` and `onDismiss` now passes the whole alert.
+- **Dashboard** gains `DashboardDigestStrip` (presentational, render-tested): a calm one-line pointer from
+  the persisted *open* alerts — tone by max severity, count, top title, and a "Review on Risk & Exposure →"
+  link (`AppShell` passes `setActive` as `onNavigate`). Silent when empty (sparse — invariant #7).
+- Verified: `tsc -b` / `vite build` / `oxlint` green; strip render-tested via throwaway harness
+  (high→coral, info→indigo, empty→silent). Key format confirmed identical across cron + hook + panels (#1).
+
 ## evaluate-alerts cron (completes P6) — BUILT, branch `feature/evaluate-alerts-cron` (stacked on the hero)
 
 The scheduled server-side counterpart of the in-app digest. Reuses the ONE pure alert engine (invariant #1)
