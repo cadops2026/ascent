@@ -154,13 +154,13 @@ Deno.serve(async (req) => {
         .or(`dismissed_at.is.null,created_at.gte.${since}`)
       const existing = (existingRows ?? []) as ExistingAlert[]
 
-      // Skip inserting an alert seen within its dedupe window (respects a manual
-      // dismiss for the period and avoids duplicate rows on each run).
-      const recentKeys = new Set(
-        existing
-          .filter((e) => e.created_at >= since)
-          .map((e) => alertKey(e.kind, e.payload?.title ?? '')),
-      )
+      // Don't re-insert an alert that's already on record: any still-OPEN row
+      // (regardless of age — else a long-open alert would duplicate every run
+      // once it aged past the window) or any row seen within the dedupe window
+      // (which also respects a manual dismiss for the period). `existing` is
+      // already exactly (open ∪ created-within-window), so its full key set is
+      // the suppression set.
+      const recentKeys = new Set(existing.map((e) => alertKey(e.kind, e.payload?.title ?? '')))
       const currentKeys = new Set(current.map((a) => alertKey(a.kind, a.title)))
 
       const toInsert = current

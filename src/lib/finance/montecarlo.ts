@@ -22,6 +22,7 @@ export interface McParams {
   annualWithdrawal?: number // today's $, each year post-retirement
   sims?: number
   legacyTarget?: number // success requires terminal >= this (default: just survive)
+  seed?: number // PRNG seed; fixed by default so results are deterministic/stable
 }
 
 export interface McBand {
@@ -39,22 +40,43 @@ export interface McResult {
   sims: number
 }
 
-function randn(): number {
+/**
+ * Seeded PRNG (mulberry32). The simulation is SEEDED and therefore deterministic:
+ * identical inputs always yield identical bands + success probability. That keeps
+ * the hero number calm (it never wobbles between renders — invariant #6), keeps
+ * the Dashboard and Projection in agreement, and makes success a *monotonic*
+ * function of the solve variable so the glide-path / withdrawal binary searches
+ * converge correctly (RNG noise would otherwise break their monotonicity).
+ */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+const DEFAULT_SEED = 0x9e3779b9
+
+type Rng = () => number
+
+function randn(rng: Rng): number {
   let u = 0
   let v = 0
-  while (u === 0) u = Math.random()
-  while (v === 0) v = Math.random()
+  while (u === 0) u = rng()
+  while (v === 0) v = rng()
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
 }
 
 /** Standardized Student-t (unit variance), df=4 → fat tails for crypto. */
-function randt(df = 4): number {
+function randt(rng: Rng, df = 4): number {
   let chi = 0
   for (let i = 0; i < df; i++) {
-    const z = randn()
+    const z = randn(rng)
     chi += z * z
   }
-  const t = randn() / Math.sqrt(chi / df)
+  const t = randn(rng) / Math.sqrt(chi / df)
   return t * Math.sqrt((df - 2) / df)
 }
 
@@ -71,6 +93,7 @@ export function monteCarlo(
 ): McResult {
   const sims = params.sims ?? 5000
   const years = Math.max(1, Math.round(params.horizonYears))
+  const rng = mulberry32(params.seed ?? DEFAULT_SEED)
 
   const classes = Object.keys(params.weights).filter((c) => cma[c] && (params.weights[c] ?? 0) > 0)
   const totalW = classes.reduce((s, c) => s + (params.weights[c] ?? 0), 0) || 1
@@ -91,10 +114,10 @@ export function monteCarlo(
 
     for (let y = 1; y <= years; y++) {
       const annualInfl = infl.rateForHorizon(y)
-      const F = randn()
+      const F = randn(rng)
       let portRet = 0
       for (let i = 0; i < classes.length; i++) {
-        const e = isCrypto[i] ? randt(4) : randn()
+        const e = isCrypto[i] ? randt(rng, 4) : randn(rng)
         const c = corr[i]!
         const shock = c * F + Math.sqrt(1 - c * c) * e
         const nominal = mean[i]! + vol[i]! * shock
