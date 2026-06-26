@@ -1,5 +1,19 @@
 # HANDOFF — after P0 (Foundation)
 
+## Estate-doc vault upload — BUILT, branch `feature/estate-doc-vault` (off main)
+
+Completes the deferred P7 piece. A private, owner-only Storage bucket for wills/trusts/POAs/directives —
+ASCENT stores *where* the documents live, never drafts or files them (invariants #9/#10).
+- **Migration `20260625210000_estate_doc_vault.sql`** — creates the private `estate-docs` bucket + RLS
+  (read/insert/update/delete) keyed on `(storage.foldername(name))[1] = auth.uid()`, mirroring the
+  `statements` bucket. `estate_docs.file_ref` (already in the schema) holds the path.
+- **Estate tab `DocRow`** — uploads to `<uid>/<doc_type>/<filename>` (`upsert`, replacing removes the old
+  object first to avoid orphans), records `file_ref`, and offers signed-URL **View** (60s) + **Remove**.
+  Graceful: upload shows a clear error if the bucket isn't there yet. Render-verified via throwaway harness
+  (upload state vs file-present View/Remove + stale badge).
+- **ACTIVATION (needs your OK):** `supabase db push` to create the bucket + policies. Until then the rest of
+  the Estate tab is unaffected; only upload errors.
+
 ## Read persisted alerts in-app — BUILT, branch `feature/read-persisted-alerts` (stacked on the cron)
 
 Closes the loop on the cron: the app now reads the `alerts` table and persists dismisses across sessions.

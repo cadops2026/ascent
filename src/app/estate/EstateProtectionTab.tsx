@@ -140,6 +140,7 @@ export function EstateProtectionTab() {
                   status={row.status}
                   lastReviewed={row.lastReviewed}
                   stale={row.stale}
+                  fileRef={row.fileRef}
                   existingId={docs.find((d) => d.doc_type === row.def.type)?.id}
                   userId={session?.user.id}
                   onSaved={loadProtection}
@@ -148,8 +149,8 @@ export function EstateProtectionTab() {
             </ul>
             <p className="mt-4 text-xs leading-relaxed text-faint">
               ASCENT tracks whether these exist and stay current — it never drafts or files them (invariant #9).
-              Anything executed but not reviewed in 3+ years is flagged for a refresh. (Encrypted file vault upload
-              arrives with the storage bucket.)
+              Anything executed but not reviewed in 3+ years is flagged for a refresh. Files live in a private,
+              owner-only vault — encrypted at rest, deletable any time (invariant #10).
             </p>
           </Panel>
 
@@ -183,16 +184,22 @@ export function EstateProtectionTab() {
   )
 }
 
+const VAULT_BUCKET = 'estate-docs'
+
 function DocRow({
-  docType, label, why, status, lastReviewed, stale, existingId, userId, onSaved,
+  docType, label, why, status, lastReviewed, stale, fileRef, existingId, userId, onSaved,
 }: {
   docType: string; label: string; why: string; status: DocStatus; lastReviewed: string | null
-  stale: boolean; existingId: string | undefined; userId: string | undefined; onSaved: () => void
+  stale: boolean; fileRef: string | null; existingId: string | undefined; userId: string | undefined
+  onSaved: () => void
 }) {
   const [st, setSt] = useState<DocStatus>(status)
   const [reviewed, setReviewed] = useState(lastReviewed ?? '')
   const [saving, setSaving] = useState(false)
+  const [vaultBusy, setVaultBusy] = useState(false)
+  const [vaultErr, setVaultErr] = useState<string | null>(null)
   const dirty = st !== status || reviewed !== (lastReviewed ?? '')
+  const fileName = fileRef ? decodeURIComponent(fileRef.split('/').pop() ?? '') : null
 
   const save = async () => {
     if (!userId) return
@@ -201,6 +208,43 @@ function DocRow({
     if (existingId) await supabase.from('estate_docs').update(payload).eq('id', existingId)
     else await supabase.from('estate_docs').insert(payload)
     setSaving(false)
+    onSaved()
+  }
+
+  // Vault: upload writes to <uid>/<doc_type>/<filename> (owner-only bucket) and
+  // records the path on estate_docs.file_ref. Model + store, never draft (#9/#10).
+  const upload = async (file: File) => {
+    if (!userId) return
+    setVaultBusy(true)
+    setVaultErr(null)
+    try {
+      if (fileRef) await supabase.storage.from(VAULT_BUCKET).remove([fileRef]) // replace, no orphan
+      const path = `${userId}/${docType}/${file.name}`
+      const up = await supabase.storage.from(VAULT_BUCKET).upload(path, file, { upsert: true })
+      if (up.error) throw up.error
+      if (existingId) await supabase.from('estate_docs').update({ file_ref: path }).eq('id', existingId)
+      else await supabase.from('estate_docs').insert({ user_id: userId, doc_type: docType, status: st, last_reviewed: reviewed || null, file_ref: path })
+      onSaved()
+    } catch (e) {
+      setVaultErr(e instanceof Error ? e.message : 'Upload failed')
+    } finally {
+      setVaultBusy(false)
+    }
+  }
+
+  const view = async () => {
+    if (!fileRef) return
+    const { data, error } = await supabase.storage.from(VAULT_BUCKET).createSignedUrl(fileRef, 60)
+    if (!error && data) window.open(data.signedUrl, '_blank', 'noopener')
+    else setVaultErr(error?.message ?? 'Could not open file')
+  }
+
+  const removeFile = async () => {
+    if (!fileRef || !existingId) return
+    setVaultBusy(true)
+    await supabase.storage.from(VAULT_BUCKET).remove([fileRef])
+    await supabase.from('estate_docs').update({ file_ref: null }).eq('id', existingId)
+    setVaultBusy(false)
     onSaved()
   }
 
@@ -219,11 +263,51 @@ function DocRow({
         ))}
       </Select>
       <Input type="date" value={reviewed} onChange={(e) => setReviewed(e.target.value)} className="w-auto! py-1! text-xs" />
+
+      {/* Vault — upload / view / replace the document file */}
+      <div className="flex items-center gap-2">
+        {fileRef ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void view()}
+              title={fileName ?? undefined}
+              className="micro-label max-w-32 truncate text-teal hover:underline"
+            >
+              📎 {fileName}
+            </button>
+            <button
+              type="button"
+              onClick={() => void removeFile()}
+              disabled={vaultBusy}
+              className="micro-label text-faint hover:text-coral"
+            >
+              {vaultBusy ? '…' : 'Remove'}
+            </button>
+          </>
+        ) : (
+          <label className="micro-label cursor-pointer text-faint transition-colors hover:text-muted">
+            {vaultBusy ? 'Uploading…' : '↑ Upload'}
+            <input
+              type="file"
+              className="hidden"
+              disabled={vaultBusy || !userId}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void upload(f)
+                e.target.value = ''
+              }}
+            />
+          </label>
+        )}
+      </div>
+
       {dirty && (
         <Button onClick={save} disabled={saving} className="py-1! text-xs">
           {saving ? '…' : 'Save'}
         </Button>
       )}
+      {vaultErr && <span className="w-full text-xs text-coral">{vaultErr}</span>}
     </li>
   )
 }

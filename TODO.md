@@ -57,8 +57,12 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
 - [ ] Re-verify the approx 2026 brackets/IRMAA/std-deduction against final IRS/SSA tables.
 
 ## P7 follow-ups
-- [ ] **Estate-doc encrypted vault upload** — needs a Storage bucket + RLS (a migration, like the
-      `statements` bucket); the checklist already tracks `file_ref`, upload UI is the remaining piece.
+- [x] **Estate-doc encrypted vault upload** — private `estate-docs` Storage bucket + owner-only RLS
+      (migration `20260625210000`, mirrors the `statements` bucket). DocRow in the Estate tab now uploads to
+      `<uid>/<doc_type>/<file>`, records `estate_docs.file_ref`, and offers signed-URL **View** / **Remove**
+      (replace removes the old object). Model + store, never draft/file (#9/#10). Render-verified (upload vs
+      file-present states). **ACTIVATION:** `supabase db push` to create the bucket+policies (degrades
+      gracefully — upload shows a clear error until then).
 - [ ] Insurance policy **inline edit** (today: add/remove). Liquidity SBLOC could optionally include a
       crypto haircut (excluded by design today).
 
