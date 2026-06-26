@@ -1,5 +1,17 @@
 # HANDOFF — after P0 (Foundation)
 
+## P8 Macro-context overlay — BUILT, branch `feature/macro-context-overlay` (stacked on the advisor)
+
+The second P8 overlay (spec §2) — context, NOT a signal. Deterministic: consensus enters only structurally
+via the CMA engine + inflation curve, never as live sentiment, never an alert or trade implication
+(#5/#7/#8).
+- **`src/lib/finance/macrocontext.ts`** — `macroContext(cma, weights, infl, horizon)`: portfolio-weighted
+  consensus expected return (nominal), the house-dispersion band (low/high), and real (deflated by the
+  horizon-matched inflation curve). Pure. Hand-verified: 60/18/12/10 blend → 6.694% nominal / 4.19% real
+  at 2.4% inflation, band 2.98–10.48%.
+- **`MacroContextCard`** on the Projection tab — frames it as long-run structural context with an explicit
+  don't-overreact reminder. Render-tested (caught + fixed a band money→percent format bug).
+
 ## P8 AI overlay (grounded) — BUILT, branch `feature/ai-advisor-overlay` (off main)
 
 The marquee P8 feature (spec §2). Narrates the user's OWN exposure + answers plan questions, grounded only

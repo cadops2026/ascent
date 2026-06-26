@@ -56,8 +56,12 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       ages/spend, narrative) + Ask / "Explain my exposure". Degrades gracefully with no key. Deno-checked;
       AdvisorView render-tested (idle/answer/no-key). **ACTIVATION:** `supabase functions deploy advisor`
       + `supabase secrets set ANTHROPIC_API_KEY=…`.
-- [ ] **Macro-context overlay** (context-not-signal, calm) — frames long-run CMA + inflation against your
-      exposure with a don't-overreact reminder; deterministic (no live sentiment). Next.
+- [x] **Macro-context overlay** (context-not-signal, calm) — `macrocontext.ts` computes the blend's
+      portfolio-weighted consensus expected return (nominal + house-dispersion band + real after the
+      horizon-matched inflation curve); `MacroContextCard` on the Projection tab frames it as long-run
+      structural context with a don't-overreact reminder. Deterministic — consensus enters only via the
+      CMA engine, never live sentiment; never an alert/signal (#5/#7/#8). Engine hand-verified (6.7% nom /
+      4.2% real on a 60/18/12/10 blend); card render-tested.
 - [ ] **Account aggregation** (Plaid/SnapTrade) — deferred MVP; needs the provider OAuth + a `sync-accounts`
       function. Blocked on you (provider account/keys).
 - [ ] **Spouse sharing** — the `share_with[]` column exists; needs RLS share policies + invite UI.

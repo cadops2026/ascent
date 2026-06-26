@@ -9,6 +9,8 @@ import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
 import { useCmaParams } from '../../lib/useCmaParams'
 import { buildInflationCurve } from '../../lib/finance/inflation'
 import { monteCarlo } from '../../lib/finance/montecarlo'
+import { macroContext } from '../../lib/finance/macrocontext'
+import { MacroContextCard } from './MacroContextCard'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
 import type { InflRow } from '../../lib/finance/inflation'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
@@ -100,6 +102,10 @@ export function ProjectionTab() {
 
   const accent = !mc ? 'ink' : mc.successProbability >= 0.8 ? 'teal' : mc.successProbability >= 0.6 ? 'amber' : 'coral'
   const allocClasses = bs.byClass.map((s) => CLASS_MAP[s.class]).filter((c): c is string => !!c)
+  const macro = useMemo(
+    () => macroContext(cma, weights, infl, Math.max(1, planToAge - currentAge)),
+    [cma, weights, infl, planToAge, currentAge],
+  )
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -196,6 +202,9 @@ export function ProjectionTab() {
               is a band; nothing is a single false-precision number.
             </p>
           </Panel>
+
+          {/* Macro context — structural, calm, not a signal (spec §2) */}
+          {macro && <MacroContextCard macro={macro} />}
         </>
       )}
     </div>
