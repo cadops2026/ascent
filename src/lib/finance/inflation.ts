@@ -68,3 +68,13 @@ export function buildInflationCurve(rows: InflRow[]): InflationCurve {
 
   return { rateForHorizon, forwardRate, source: chosen }
 }
+
+/**
+ * A flat inflation curve at a single user-supplied rate — the Settings inflation
+ * override. Every horizon and every forward year returns the same rate, so it
+ * cleanly replaces the EXPINF/seeded curve when the investor wants to pin their
+ * own expected inflation. source='manual' so the UI can show it's an override.
+ */
+export function flatInflationCurve(rate: number): InflationCurve {
+  return { rateForHorizon: () => rate, forwardRate: () => rate, source: 'manual' }
+}

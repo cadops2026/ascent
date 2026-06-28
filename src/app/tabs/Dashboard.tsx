@@ -10,10 +10,10 @@ import { computeBalanceSheet } from '../../lib/finance/networth'
 import type { AssetClass } from '../../lib/finance/networth'
 import { estateExposure } from '../../lib/finance/estate'
 import type { FilingStatus } from '../../lib/db'
-import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import { buildCma, applyCmaOverride, recenterCmaToReal } from '../../lib/finance/cma'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
 import { useCmaParams } from '../../lib/useCmaParams'
-import { buildInflationCurve } from '../../lib/finance/inflation'
+import { buildInflationCurve, flatInflationCurve } from '../../lib/finance/inflation'
 import type { InflRow } from '../../lib/finance/inflation'
 import { monteCarlo } from '../../lib/finance/montecarlo'
 import { buildEtfMap, lookThrough } from '../../lib/finance/lookthrough'
@@ -70,7 +70,12 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
 
   const { params: cmaOverride } = useCmaParams()
   const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
-  const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
+  const inflOverride = data.profile?.inflation_override ?? null
+  const growthOverride = data.profile?.real_growth_override ?? null
+  const infl = useMemo(
+    () => (inflOverride != null ? flatInflationCurve(inflOverride) : buildInflationCurve(inflRows)),
+    [inflRows, inflOverride],
+  )
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data],
@@ -98,10 +103,14 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
     }
     return w
   }, [bs])
+  const cmaEff = useMemo(
+    () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
+    [cma, weights, growthOverride],
+  )
 
   const mc = useMemo(() => {
     if (bs.investable <= 0 || uniRows.length === 0) return null
-    return monteCarlo(cma, infl, {
+    return monteCarlo(cmaEff, infl, {
       initialWealth: bs.investable,
       weights,
       retirementInYears: Math.max(0, retireAge - currentAge),
@@ -110,7 +119,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
       annualWithdrawal: withdrawal,
       sims: SIMS,
     })
-  }, [cma, infl, weights, bs.investable, retireAge, currentAge, planToAge, withdrawal, uniRows.length])
+  }, [cmaEff, infl, weights, bs.investable, retireAge, currentAge, planToAge, withdrawal, uniRows.length])
 
   // Exposure: same engine chain the Risk tab reads (invariant #1).
   const betaByClass = useMemo(() => {

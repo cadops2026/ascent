@@ -8,9 +8,9 @@ import {
   taxBuckets, withdrawalSequence, assetLocation, tlhLotOpportunities, rmdProjection,
   rothConversion, coordinatePrompts, bucketForTaxType,
 } from '../../lib/finance/tax'
-import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import { buildCma, applyCmaOverride, recenterCmaToReal } from '../../lib/finance/cma'
 import { useCmaParams } from '../../lib/useCmaParams'
-import { buildInflationCurve } from '../../lib/finance/inflation'
+import { buildInflationCurve, flatInflationCurve } from '../../lib/finance/inflation'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
 import type { InflRow } from '../../lib/finance/inflation'
 import { FILING_STATUSES, FILING_LABEL } from '../../lib/db'
@@ -88,7 +88,12 @@ export function TaxWithdrawalTab() {
   // Withdrawal planner inputs (reuses the consensus-CMA + inflation engines).
   const { params: cmaOverride } = useCmaParams()
   const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
-  const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
+  const inflOverride = data.profile?.inflation_override ?? null
+  const growthOverride = data.profile?.real_growth_override ?? null
+  const infl = useMemo(
+    () => (inflOverride != null ? flatInflationCurve(inflOverride) : buildInflationCurve(inflRows)),
+    [inflRows, inflOverride],
+  )
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data.holdings, data.realEstate, data.liabilities, data.quotes],
@@ -101,6 +106,10 @@ export function TaxWithdrawalTab() {
     }
     return w
   }, [bs.byClass])
+  const cmaEff = useMemo(
+    () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
+    [cma, weights, growthOverride],
+  )
   const gainFractionDefault = useMemo(() => {
     let val = 0
     let gain = 0
@@ -145,7 +154,7 @@ export function TaxWithdrawalTab() {
           />
 
           <WithdrawalPlanner
-            cma={cma}
+            cma={cmaEff}
             infl={infl}
             weights={weights}
             investable={bs.investable}

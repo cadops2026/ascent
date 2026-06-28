@@ -16,17 +16,17 @@ export function MacroContextCard({ macro }: { macro: MacroContext }) {
       <div className="grid gap-8 sm:grid-cols-2">
         <Figure
           label="Your blend — consensus expected return"
-          display={fmtPct(macro.nominalReturn)}
+          display={fmtPct(macro.realReturn)}
           format="percent"
           band={{ low: macro.low, high: macro.high }}
           confidence="house dispersion"
           accent="indigo"
           size="lg"
-          sublabel="long-run nominal · weighted across the major houses"
+          sublabel="long-run real · weighted across the major houses"
         />
         <Figure
-          label="Real (after expected inflation)"
-          display={fmtPct(macro.realReturn)}
+          label="Implied nominal (with expected inflation)"
+          display={fmtPct(macro.nominalReturn)}
           accent="ink"
           size="lg"
           sublabel={`${fmtPct(macro.inflationToHorizon)} expected inflation · ${macro.inflationSource} curve`}

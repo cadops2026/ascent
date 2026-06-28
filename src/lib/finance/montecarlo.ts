@@ -5,11 +5,12 @@ import type { InflationCurve } from './inflation'
  * Monte Carlo wealth simulation. Correlated class returns via a single market
  * factor (corr = each class's correlation to US equity); crypto's idiosyncratic
  * shock is Student-t (fat-tailed — invariant #12). Works in REAL (today's
- * dollars): each year's nominal return is deflated by that year's *forward*
- * inflation rate from the horizon-matched curve (invariant #2) — not the
- * average-to-horizon rate, which would mis-deflate on a sloped curve — so
- * contributions/withdrawals stay constant in real terms and the output bands
- * are already in today's dollars (invariant #4).
+ * dollars): the CMA per-class expected returns are themselves real (after
+ * inflation), so the sim draws real returns directly — no inflation deflation
+ * step. Contributions/withdrawals are in today's dollars and stay constant in
+ * real terms, so the output bands are already in today's dollars (invariants
+ * #2/#4). Inflation still drives nominal-denominated things elsewhere (the macro
+ * readout, tax-bracket indexing) — just not the growth of real wealth here.
  */
 export interface McParams {
   initialWealth: number
@@ -90,7 +91,7 @@ function pctile(sorted: number[], p: number): number {
 
 export function monteCarlo(
   cma: Record<string, ClassCma>,
-  infl: InflationCurve,
+  _infl: InflationCurve, // retained for call-site stability; the sim is real-terms (CMA is real)
   params: McParams,
 ): McResult {
   const sims = params.sims ?? 5000
@@ -109,27 +110,21 @@ export function monteCarlo(
   let successes = 0
   const legacy = params.legacyTarget ?? 0
 
-  // The forward inflation rate for year y is identical across every sim — compute
-  // it once per year instead of re-deriving it inside the inner loop (sims × years).
-  const inflByYear = new Array<number>(years + 1)
-  for (let y = 1; y <= years; y++) inflByYear[y] = infl.forwardRate(y)
-
   for (let s = 0; s < sims; s++) {
     let wealth = params.initialWealth
     wealthByYear[0]![s] = wealth
     let ruined = false
 
     for (let y = 1; y <= years; y++) {
-      const annualInfl = inflByYear[y]!
       const F = randn(rng)
       let portRet = 0
       for (let i = 0; i < classes.length; i++) {
         const e = isCrypto[i] ? randt(rng, 4) : randn(rng)
         const c = corr[i]!
         const shock = c * F + Math.sqrt(1 - c * c) * e
-        const nominal = mean[i]! + vol[i]! * shock
-        const real = (1 + nominal) / (1 + annualInfl) - 1
-        portRet += w[i]! * real
+        // mean[i] is the class's REAL expected return — draw the real return directly.
+        const ret = mean[i]! + vol[i]! * shock
+        portRet += w[i]! * ret
       }
       wealth = wealth * (1 + portRet)
       wealth += params.cashFlow

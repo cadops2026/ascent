@@ -4,9 +4,9 @@ import { Panel, Figure, MicroLabel, Field, Input } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
 import { fmtPct } from '../../lib/format'
 import { computeBalanceSheet, holdingValue } from '../../lib/finance/networth'
-import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import { buildCma, applyCmaOverride, recenterCmaToReal } from '../../lib/finance/cma'
 import { useCmaParams } from '../../lib/useCmaParams'
-import { buildInflationCurve } from '../../lib/finance/inflation'
+import { buildInflationCurve, flatInflationCurve } from '../../lib/finance/inflation'
 import { solveYearsOfWork, solveMaintainWealth, sensitivityStrip, principleFor } from '../../lib/finance/glidepath'
 import type { GlideInput } from '../../lib/finance/glidepath'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
@@ -64,7 +64,12 @@ export function WorkGlidePathTab() {
 
   const { params: cmaOverride } = useCmaParams()
   const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
-  const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
+  const inflOverride = data.profile?.inflation_override ?? null
+  const growthOverride = data.profile?.real_growth_override ?? null
+  const infl = useMemo(
+    () => (inflOverride != null ? flatInflationCurve(inflOverride) : buildInflationCurve(inflRows)),
+    [inflRows, inflOverride],
+  )
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data],
@@ -77,6 +82,10 @@ export function WorkGlidePathTab() {
     }
     return w
   }, [bs])
+  const cmaEff = useMemo(
+    () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
+    [cma, weights, growthOverride],
+  )
 
   const singleNamePct = useMemo(() => {
     let mx = 0
@@ -104,13 +113,13 @@ export function WorkGlidePathTab() {
       confidenceTarget: dq.conf / 100, bridgeYears: dq.bridge, phase2IncomeFrac: dq.p2 / 100,
       healthcareAnnual: dq.hc, medicareAge: MEDICARE_AGE, sims: 700,
     }
-    const sol = solveYearsOfWork(cma, infl, inp)
-    const maintain = solveMaintainWealth(cma, infl, inp)
-    const sens = sol.feasible ? sensitivityStrip(cma, infl, inp, sol.years) : []
+    const sol = solveYearsOfWork(cmaEff, infl, inp)
+    const maintain = solveMaintainWealth(cmaEff, infl, inp)
+    const sens = sol.feasible ? sensitivityStrip(cmaEff, infl, inp, sol.years) : []
     const principle = principleFor({ yearsOfWork: sol.years, feasible: sol.feasible, singleNamePct, cryptoPct })
     return { inp, sol, maintain, sens, principle }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cma, infl, weights, bs.investable, dq.age, dq.plan, dq.spend, dq.contrib, dq.conf, dq.bridge, dq.p2, dq.hc, singleNamePct, cryptoPct, uniRows.length])
+  }, [cmaEff, infl, weights, bs.investable, dq.age, dq.plan, dq.spend, dq.contrib, dq.conf, dq.bridge, dq.p2, dq.hc, singleNamePct, cryptoPct, uniRows.length])
 
   const horizon = Math.max(1, dq.plan - dq.age)
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import { Panel, MicroLabel } from '../../components/ui'
 import { Button, Input } from '../../components/ui'
 import { PageHeader } from './PhasePlaceholder'
@@ -7,6 +8,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { exportUserData, deleteAllUserData, deleteAccount } from '../../lib/userData'
 import { TaxParamsEditor } from '../tax/TaxParamsEditor'
 import { CmaParamsEditor } from '../tax/CmaParamsEditor'
+import { MacroAssumptionsEditor } from '../tax/MacroAssumptionsEditor'
 
 function Row({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'teal' | 'amber' }) {
   const toneClass = tone === 'teal' ? 'text-teal' : tone === 'amber' ? 'text-amber' : 'text-ink'
@@ -45,6 +47,18 @@ export function Settings() {
         <CmaParamsEditor />
       </div>
 
+      <div className="mt-5">
+        <MacroAssumptionsEditor />
+      </div>
+
+      <Panel label="Holdings data" className="mt-5">
+        <p className="text-sm leading-relaxed text-muted">
+          Clear every holding to start the balance sheet over. Accounts, properties, and plans are kept —
+          only holdings are removed. This can&rsquo;t be undone, so it takes two steps.
+        </p>
+        <ClearHoldings userId={session?.user.id} />
+      </Panel>
+
       <Panel label="Privacy" className="mt-5">
         <p className="text-sm leading-relaxed text-muted">
           Read-only connections; the browser talks to Supabase only. You own your data — export a
@@ -56,6 +70,57 @@ export function Settings() {
           onDeleted={signOut}
         />
       </Panel>
+    </div>
+  )
+}
+
+function ClearHoldings({ userId }: { userId: string | undefined }) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const clear = async () => {
+    if (!userId) return
+    setBusy(true)
+    setError(null)
+    const { error } = await supabase.from('holdings').delete().eq('user_id', userId)
+    setBusy(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setConfirming(false)
+    setDone(true)
+  }
+
+  if (done) {
+    return <p className="mt-4 text-sm text-teal">All holdings removed — re-open the Balance Sheet to confirm.</p>
+  }
+
+  return (
+    <div className="mt-4">
+      {!confirming ? (
+        <Button variant="danger" onClick={() => setConfirming(true)} disabled={!userId}>
+          Clear all holdings
+        </Button>
+      ) : (
+        <div className="rounded-lg border border-coral/40 bg-coral/5 p-4">
+          <p className="text-sm text-ink">
+            Remove every holding? Accounts, properties, and plans stay — only holdings are deleted. This
+            can&rsquo;t be undone.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Button variant="danger" onClick={() => void clear()} disabled={busy}>
+              {busy ? 'Removing…' : 'Yes, remove all holdings'}
+            </Button>
+            <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+          {error && <p className="mt-3 text-sm text-coral">{error}</p>}
+        </div>
+      )}
     </div>
   )
 }

@@ -95,9 +95,10 @@ export function CmaParamsEditor() {
       right={<MicroLabel className={stored ? 'text-teal' : 'text-amber'}>{stored ? `stored: ${storedYear}` : 'using seeded consensus'}</MicroLabel>}
     >
       <p className="text-sm leading-relaxed text-muted">
-        Expected return, volatility, and correlation-to-equities per asset class — the Monte Carlo inputs.
-        The consensus is seeded from the major houses; override here when they republish (annually). These
-        steer projections, not a forecast of what will outperform (invariant #5).
+        Expected <span className="text-ink">real</span> (after-inflation) return, volatility, and
+        correlation-to-equities per asset class — the Monte Carlo inputs. The consensus is seeded from the
+        major houses; override here when they republish (annually). These steer projections, not a forecast
+        of what will outperform (invariant #5).
       </p>
 
       {classes.length === 0 ? (
@@ -106,7 +107,7 @@ export function CmaParamsEditor() {
         <>
           <div className="mt-4 grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-x-3 gap-y-2">
             <MicroLabel className="text-faint">Class</MicroLabel>
-            <MicroLabel className="text-right text-faint">Return %</MicroLabel>
+            <MicroLabel className="text-right text-faint">Real %</MicroLabel>
             <MicroLabel className="text-right text-faint">Vol %</MicroLabel>
             <MicroLabel className="text-right text-faint">Corr</MicroLabel>
             {classes.map((cls) => (

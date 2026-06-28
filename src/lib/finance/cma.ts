@@ -3,8 +3,9 @@ import type { CmaParams } from './cmaparams'
 /**
  * Consensus-CMA engine (invariant #3 — modules read this, never hardcode
  * returns). Blends per-house capital-market assumptions (median + dispersion)
- * with the asset-class universe's vol + correlation. Returns are long-run nominal
- * (a two-stage near/long path is a later refinement once near-term data is seeded).
+ * with the asset-class universe's vol + correlation. Returns are long-run REAL
+ * (after inflation) — the projection draws them directly without a second
+ * inflation deflation (a two-stage near/long path is a later refinement).
  */
 export interface CmaSourceRow {
   asset_class: string
@@ -21,7 +22,7 @@ export interface UniverseRow {
 
 export interface ClassCma {
   class: string
-  expectedReturn: number // consensus median, net of cost drag
+  expectedReturn: number // consensus median REAL return (after inflation), net of cost drag
   low: number // dispersion floor (lowest house, net of cost)
   high: number // dispersion ceiling
   vol: number
@@ -58,6 +59,33 @@ export function buildCma(
       vol: u.vol ?? 0.15,
       corr: u.corr_to_us_equity ?? 0.5,
     }
+  }
+  return out
+}
+
+/**
+ * Re-center the per-class CMA so the *portfolio-weighted* real return equals a
+ * single user target (the Settings global real-growth override). Every class's
+ * mean (and its low/high band) is shifted by the same delta, so relative spreads,
+ * volatility, and correlation are preserved — only the overall level moves. The
+ * delta is computed from the *weighted* blend; unweighted classes don't affect the
+ * projection. `targetReal` and weights are fractions.
+ */
+export function recenterCmaToReal(
+  map: Record<string, ClassCma>,
+  weights: Record<string, number>,
+  targetReal: number,
+): Record<string, ClassCma> {
+  const classes = Object.keys(weights).filter((c) => map[c] && (weights[c] ?? 0) > 0)
+  const total = classes.reduce((s, c) => s + (weights[c] ?? 0), 0)
+  if (total <= 0) return map
+  let blended = 0
+  for (const c of classes) blended += ((weights[c] ?? 0) / total) * map[c]!.expectedReturn
+  const delta = targetReal - blended
+  if (delta === 0) return map
+  const out: Record<string, ClassCma> = {}
+  for (const [cls, c] of Object.entries(map)) {
+    out[cls] = { ...c, expectedReturn: c.expectedReturn + delta, low: c.low + delta, high: c.high + delta }
   }
   return out
 }

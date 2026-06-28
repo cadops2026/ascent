@@ -5,9 +5,9 @@ import { PageHeader } from '../tabs/PhasePlaceholder'
 import { WealthPathChart } from './WealthPathChart'
 import { fmtPct } from '../../lib/format'
 import { computeBalanceSheet } from '../../lib/finance/networth'
-import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import { buildCma, applyCmaOverride, recenterCmaToReal } from '../../lib/finance/cma'
 import { useCmaParams } from '../../lib/useCmaParams'
-import { buildInflationCurve } from '../../lib/finance/inflation'
+import { buildInflationCurve, flatInflationCurve } from '../../lib/finance/inflation'
 import { monteCarlo } from '../../lib/finance/montecarlo'
 import { macroContext } from '../../lib/finance/macrocontext'
 import { MacroContextCard } from './MacroContextCard'
@@ -67,7 +67,13 @@ export function ProjectionTab() {
 
   const { params: cmaOverride } = useCmaParams()
   const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
-  const infl = useMemo(() => buildInflationCurve(inflRows), [inflRows])
+  // Settings inflation override → flat curve; else the EXPINF/seeded curve.
+  const inflOverride = data.profile?.inflation_override ?? null
+  const growthOverride = data.profile?.real_growth_override ?? null
+  const infl = useMemo(
+    () => (inflOverride != null ? flatInflationCurve(inflOverride) : buildInflationCurve(inflRows)),
+    [inflRows, inflOverride],
+  )
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data],
@@ -80,10 +86,15 @@ export function ProjectionTab() {
     }
     return w
   }, [bs])
+  // Settings global real-growth override → re-center the blend; else per-class CMA.
+  const cmaEff = useMemo(
+    () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
+    [cma, weights, growthOverride],
+  )
 
   const mc = useMemo(() => {
     if (bs.investable <= 0 || uniRows.length === 0) return null
-    return monteCarlo(cma, infl, {
+    return monteCarlo(cmaEff, infl, {
       initialWealth: bs.investable,
       weights,
       retirementInYears: Math.max(0, retireAge - currentAge),
@@ -92,7 +103,7 @@ export function ProjectionTab() {
       annualWithdrawal: withdrawal,
       sims: SIMS,
     })
-  }, [cma, infl, weights, bs.investable, retireAge, currentAge, planToAge, contribution, withdrawal, uniRows.length])
+  }, [cmaEff, infl, weights, bs.investable, retireAge, currentAge, planToAge, contribution, withdrawal, uniRows.length])
 
   const chartData = useMemo(
     () =>
@@ -103,8 +114,8 @@ export function ProjectionTab() {
   const accent = !mc ? 'ink' : mc.successProbability >= 0.8 ? 'teal' : mc.successProbability >= 0.6 ? 'amber' : 'coral'
   const allocClasses = bs.byClass.map((s) => CLASS_MAP[s.class]).filter((c): c is string => !!c)
   const macro = useMemo(
-    () => macroContext(cma, weights, infl, Math.max(1, planToAge - currentAge)),
-    [cma, weights, infl, planToAge, currentAge],
+    () => macroContext(cmaEff, weights, infl, Math.max(1, planToAge - currentAge)),
+    [cmaEff, weights, infl, planToAge, currentAge],
   )
 
   return (
@@ -180,10 +191,10 @@ export function ProjectionTab() {
           </div>
 
           {/* Visible engine assumptions */}
-          <Panel label="Per-class assumptions (consensus CMA)">
+          <Panel label="Per-class assumptions (consensus CMA · real returns)">
             <ul className="space-y-1.5">
               {[...new Set(allocClasses)].map((c) => {
-                const k = cma[c]
+                const k = cmaEff[c]
                 if (!k) return null
                 return (
                   <li key={c} className="flex items-center gap-3 text-sm">

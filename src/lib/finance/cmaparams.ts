@@ -5,7 +5,7 @@
  * (same pattern as TaxParams). When no override exists, the seeded consensus is used.
  */
 export interface CmaClassParams {
-  expectedReturn: number // nominal, fraction
+  expectedReturn: number // real (after-inflation), fraction
   vol: number // annual stdev, fraction
   corr: number // correlation to US equity
 }
