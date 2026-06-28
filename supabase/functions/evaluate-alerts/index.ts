@@ -45,13 +45,21 @@ interface ExistingAlert {
 
 const alertKey = (kind: string, title: string) => `${kind}|${title}`
 
+/** Constant-time string compare — avoids leaking the secret via response timing. */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   // Gate: only the scheduler (or an operator holding the secret) may invoke this.
   const secret = Deno.env.get('CRON_SECRET')
   if (!secret) return json({ error: 'CRON_SECRET not set in Supabase secrets' }, 500)
-  if (req.headers.get('x-cron-secret') !== secret) return json({ error: 'unauthorized' }, 401)
+  if (!safeEqual(req.headers.get('x-cron-secret') ?? '', secret)) return json({ error: 'unauthorized' }, 401)
 
   try {
     const admin = createClient(
