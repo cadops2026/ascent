@@ -1,6 +1,28 @@
 // refresh-quotes — Finnhub equity/ETF quotes → quote_cache (service role write).
-// Browser → Supabase only; the Finnhub key lives in Supabase secrets (invariant #10).
+// Mutual funds / money-market funds aren't on Finnhub, so symbols Finnhub can't
+// price fall back to a keyless fund-NAV source (Yahoo chart endpoint). All calls
+// are server-side; the browser only talks to Supabase (invariant #10).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+
+/** Keyless fund/NAV fallback for symbols Finnhub doesn't cover (mutual funds, MMFs). */
+async function fundNav(sym: string): Promise<{ price: number; prevClose: number | null } | null> {
+  try {
+    const r = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } },
+    )
+    if (!r.ok) return null
+    const d = (await r.json()) as {
+      chart?: { result?: { meta?: { regularMarketPrice?: number; chartPreviousClose?: number; previousClose?: number } }[] }
+    }
+    const meta = d.chart?.result?.[0]?.meta
+    const price = meta?.regularMarketPrice
+    if (price == null || price === 0) return null
+    return { price, prevClose: meta?.chartPreviousClose ?? meta?.previousClose ?? null }
+  } catch {
+    return null
+  }
+}
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -46,23 +68,44 @@ Deno.serve(async (req) => {
     const toFetch = uniq.filter((s) => !fresh.has(s))
 
     let updated = 0
+    let viaFunds = 0
     for (const sym of toFetch) {
+      let price: number | null = null
+      let prevClose: number | null = null
+
+      // 1) Finnhub — equities/ETFs.
       const r = await fetch(
         `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${FINNHUB}`,
       )
-      if (!r.ok) continue
-      const q = (await r.json()) as { c?: number; pc?: number }
-      if (q.c == null || q.c === 0) continue // 0 = unknown symbol on Finnhub
+      if (r.ok) {
+        const q = (await r.json()) as { c?: number; pc?: number }
+        if (q.c != null && q.c !== 0) {
+          price = q.c
+          prevClose = q.pc ?? null
+        }
+      }
+
+      // 2) Fund-NAV fallback — mutual funds / money-market that Finnhub can't price.
+      if (price == null) {
+        const nav = await fundNav(sym)
+        if (nav) {
+          price = nav.price
+          prevClose = nav.prevClose
+          viaFunds++
+        }
+      }
+
+      if (price == null) continue // genuinely unknown (bad ticker / unsupported)
       const { error } = await admin.from('quote_cache').upsert({
         symbol: sym,
-        price: q.c,
-        prev_close: q.pc ?? null,
+        price,
+        prev_close: prevClose,
         updated_at: new Date().toISOString(),
       })
       if (!error) updated++
     }
 
-    return json({ updated, skipped: fresh.size })
+    return json({ updated, viaFunds, skipped: fresh.size })
   } catch (e) {
     return json({ error: String(e) }, 500)
   }
