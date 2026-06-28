@@ -37,6 +37,15 @@ export function HoldingsSection({
     await reload()
   }
 
+  // Set/fix a holding's ticker (e.g. an imported fund stored under its name).
+  // Once it has a real symbol, the next quote refresh prices it.
+  const setSymbol = async (h: Holding) => {
+    const t = window.prompt(`Ticker for "${h.name || h.symbol || 'holding'}" (e.g. VTSAX):`, h.symbol ?? '')
+    if (t == null) return
+    await supabase.from('holdings').update({ symbol: t.trim().toUpperCase() || null }).eq('id', h.id)
+    await reload()
+  }
+
   const removeAll = async () => {
     if (!window.confirm(`Remove all ${holdings.length} holdings? This can't be undone.`)) return
     await supabase.from('holdings').delete().eq('user_id', userId)
@@ -110,6 +119,13 @@ export function HoldingsSection({
                     <span className="text-ink">{fmtMoney(v)}</span>
                   )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void setSymbol(h)}
+                  className="micro-label text-faint hover:text-teal"
+                >
+                  Ticker
+                </button>
                 <button
                   type="button"
                   onClick={() => remove(h.id)}
