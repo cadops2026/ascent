@@ -20,10 +20,25 @@ const confColor: Record<'high' | 'medium' | 'low', string> = {
   low: 'text-faint',
 }
 
+// ── Dedup keys ────────────────────────────────────────────────────────────────
+// A position is "the same" — and must not be imported twice — when it shares the
+// account, symbol, kind, entry mode, and amount (shares or value). Amount is part
+// of the key on purpose ("same amounts don't get imported twice"); the same ticker
+// at a different amount or in a different account is a distinct position and still
+// imports. Account is part of the key, and accounts are reused by name on re-import,
+// so re-running the same statement collapses onto the existing rows instead of dup'ing.
+const roundShares = (n: number) => Math.round(n * 1e4) / 1e4
+const roundAmt = (n: number) => Math.round(n * 100) / 100
+const holdingKey = (account: string | null, label: string, kind: string, mode: 'shares' | 'amount', val: number) =>
+  `${account ?? ''}|${label.trim().toUpperCase()}|${kind}|${mode}|${mode === 'shares' ? roundShares(val) : roundAmt(val)}`
+const liabilityKey = (label: string, kind: string, balance: number) =>
+  `${label.trim().toLowerCase()}|${kind}|${roundAmt(balance)}`
+
 export function ImportSection({ userId, reload }: { userId: string; reload: () => Promise<void> }) {
   const [imports, setImports] = useState<StatementImport[]>([])
   const [uploading, setUploading] = useState(false)
   const [excluded, setExcluded] = useState<Record<string, Set<number>>>({})
+  const [commitNotes, setCommitNotes] = useState<Record<string, string>>({})
   const folderRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -122,14 +137,44 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
       const tax: TaxType = (TAX_TYPES as readonly string[]).includes(summary.account_type ?? '')
         ? (summary.account_type as TaxType)
         : 'taxable'
-      const { data: acc } = await supabase
+      // Reuse an account with the same name + type instead of dup'ing it on re-import.
+      const { data: existing } = await supabase
         .from('accounts')
-        .insert({ user_id: userId, name: summary.institution, tax_type: tax })
         .select('id')
-        .single()
-      accountId = acc?.id ?? null
+        .eq('name', summary.institution)
+        .eq('tax_type', tax)
+        .limit(1)
+        .maybeSingle()
+      if (existing) accountId = existing.id
+      else {
+        const { data: acc } = await supabase
+          .from('accounts')
+          .insert({ user_id: userId, name: summary.institution, tax_type: tax })
+          .select('id')
+          .single()
+        accountId = acc?.id ?? null
+      }
     }
 
+    // Dedup: build keys for what the user already holds so the same position/amount
+    // isn't imported twice (re-imports, overlapping statements). The Set also grows
+    // as we insert, so duplicate rows within one statement are collapsed too.
+    const [{ data: exH }, { data: exL }] = await Promise.all([
+      supabase.from('holdings').select('account_id, symbol, name, kind, entry_mode, shares, manual_amount'),
+      supabase.from('liabilities').select('label, kind, orig_balance'),
+    ])
+    const seenH = new Set<string>()
+    for (const h of exH ?? []) {
+      const label = (h.symbol || h.name || '').toString()
+      if (!label) continue
+      const mode = h.entry_mode === 'shares' ? 'shares' : 'amount'
+      seenH.add(holdingKey(h.account_id, label, h.kind, mode, (mode === 'shares' ? h.shares : h.manual_amount) ?? 0))
+    }
+    const seenL = new Set<string>()
+    for (const l of exL ?? []) seenL.add(liabilityKey((l.label ?? '').toString(), l.kind, l.orig_balance ?? 0))
+
+    let imported = 0
+    let skipped = 0
     for (let i = 0; i < cands.length; i++) {
       if (ex.has(i)) continue
       const c = cands[i]
@@ -138,28 +183,49 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
         const hasShares = c.shares != null
         const hasAmount = c.amount != null
         if (!hasShares && !hasAmount) continue
+        const label = (c.symbol || c.name || '').toString()
+        const mode = hasShares ? 'shares' : 'amount'
+        const key = holdingKey(accountId, label, c.kind, mode, (hasShares ? c.shares : c.amount) ?? 0)
+        if (seenH.has(key)) {
+          skipped++
+          continue
+        }
+        seenH.add(key)
         await supabase.from('holdings').insert({
           user_id: userId,
           account_id: accountId,
           kind: c.kind,
-          entry_mode: hasShares ? 'shares' : 'amount',
+          entry_mode: mode,
           symbol: c.symbol ? c.symbol.toUpperCase() : null,
           name: c.name ?? null,
           shares: hasShares ? c.shares! : null,
           manual_amount: hasShares ? null : c.amount!,
           cost_basis: c.cost_basis ?? null,
         })
+        imported++
       } else {
+        const label = c.label ?? 'Imported liability'
+        const key = liabilityKey(label, c.kind, c.balance ?? 0)
+        if (seenL.has(key)) {
+          skipped++
+          continue
+        }
+        seenL.add(key)
         await supabase.from('liabilities').insert({
           user_id: userId,
-          label: c.label ?? 'Imported liability',
+          label,
           kind: c.kind,
           orig_balance: c.balance ?? 0,
           rate: c.rate ?? null,
         })
+        imported++
       }
     }
     await supabase.from('statement_imports').update({ status: 'committed' }).eq('id', imp.id)
+    setCommitNotes((n) => ({
+      ...n,
+      [imp.id]: `Imported ${imported}${skipped ? ` · skipped ${skipped} duplicate${skipped === 1 ? '' : 's'} already in your holdings` : ''}`,
+    }))
     await load()
     await reload()
   }
@@ -195,6 +261,9 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
           {imports.map((imp) => (
             <li key={imp.id} className="rounded-lg border border-line bg-panel-hi p-4">
               <ImportHeader imp={imp} onRetry={() => retry(imp)} onDismiss={() => setStatus(imp, 'dismissed')} />
+              {imp.status === 'committed' && commitNotes[imp.id] && (
+                <div className="mt-1 text-xs text-muted">{commitNotes[imp.id]}</div>
+              )}
               {imp.status === 'parsed' && (
                 <Review
                   imp={imp}
