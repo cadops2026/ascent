@@ -37,17 +37,34 @@ export function HoldingsSection({
     await reload()
   }
 
+  const removeAll = async () => {
+    if (!window.confirm(`Remove all ${holdings.length} holdings? This can't be undone.`)) return
+    await supabase.from('holdings').delete().eq('user_id', userId)
+    await reload()
+  }
+
   return (
     <Panel
       label="Holdings"
       right={
-        <button
-          type="button"
-          onClick={() => setAdding((v) => !v)}
-          className="micro-label text-teal hover:text-ink"
-        >
-          {adding ? 'Close' : '+ Add holding'}
-        </button>
+        <div className="flex items-center gap-3">
+          {holdings.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void removeAll()}
+              className="micro-label text-faint hover:text-coral"
+            >
+              Clear all
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setAdding((v) => !v)}
+            className="micro-label text-teal hover:text-ink"
+          >
+            {adding ? 'Close' : '+ Add holding'}
+          </button>
+        </div>
       }
     >
       {accounts.length === 0 && <AccountForm userId={userId} reload={reload} />}
