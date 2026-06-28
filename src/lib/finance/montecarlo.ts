@@ -109,13 +109,18 @@ export function monteCarlo(
   let successes = 0
   const legacy = params.legacyTarget ?? 0
 
+  // The forward inflation rate for year y is identical across every sim — compute
+  // it once per year instead of re-deriving it inside the inner loop (sims × years).
+  const inflByYear = new Array<number>(years + 1)
+  for (let y = 1; y <= years; y++) inflByYear[y] = infl.forwardRate(y)
+
   for (let s = 0; s < sims; s++) {
     let wealth = params.initialWealth
     wealthByYear[0]![s] = wealth
     let ruined = false
 
     for (let y = 1; y <= years; y++) {
-      const annualInfl = infl.forwardRate(y)
+      const annualInfl = inflByYear[y]!
       const F = randn(rng)
       let portRet = 0
       for (let i = 0; i < classes.length; i++) {
