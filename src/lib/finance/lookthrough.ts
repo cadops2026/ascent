@@ -73,6 +73,46 @@ export function compositionEtfs(): string[] {
   return [...new Set(Object.values(FUND_COMPOSITION).flatMap((parts) => parts.map((p) => p.symbol)))]
 }
 
+/**
+ * Resolve a fund/ETF into its underlying company constituents — directly from its
+ * own ETF holdings, via a mutual-fund→ETF proxy (VIGAX→VUG…), or via a name
+ * composition for name-only fund-of-funds (529 portfolios → VTI+VXUS / VUG).
+ * Returns null when no look-through data is available (genuinely opaque). `via` is
+ * the source symbol(s), for an honest "via …" label. Shared by both the flat and
+ * per-position look-throughs so they agree.
+ */
+export function fundConstituents(
+  symbol: string | null,
+  name: string | null,
+  etfMap: EtfMap,
+  proxyMap: Record<string, string>,
+): { list: { symbol: string; name: string | null; weight: number }[]; via: string } | null {
+  const sym = symbol?.toUpperCase()
+  if (sym && etfMap[sym]?.length) return { list: etfMap[sym]!, via: sym }
+  if (sym && proxyMap[sym]) {
+    const proxy = proxyMap[sym]!
+    if (etfMap[proxy]?.length) return { list: etfMap[proxy]!, via: proxy }
+  }
+  const comp = name ? FUND_COMPOSITION[normLtName(name)] : undefined
+  if (comp) {
+    const merged = new Map<string, { symbol: string; name: string | null; weight: number }>()
+    let any = false
+    for (const part of comp) {
+      const ec = etfMap[part.symbol.toUpperCase()]
+      if (!ec?.length) continue
+      any = true
+      for (const c of ec) {
+        const w = c.weight * part.weight
+        const ex = merged.get(c.symbol)
+        if (ex) ex.weight += w
+        else merged.set(c.symbol, { symbol: c.symbol, name: c.name, weight: w })
+      }
+    }
+    if (any && merged.size) return { list: [...merged.values()], via: comp.map((x) => x.symbol).join(' + ') }
+  }
+  return null
+}
+
 export function buildEtfMap(rows: EtfHoldingRow[]): EtfMap {
   const map: EtfMap = {}
   for (const r of rows) {
@@ -96,6 +136,7 @@ export function lookThrough(
   realEstate: RealEstate[],
   quotes: QuoteMap,
   etfMap: EtfMap,
+  proxyMap: Record<string, string> = LOOKTHROUGH_PROXY,
 ): LookThrough {
   const byName = new Map<string, NameExposure>()
   const unresolved = new Set<string>()
@@ -123,18 +164,23 @@ export function lookThrough(
 
     if (h.kind === 'cash') continue // counts in investable, not a single name
 
-    if (h.kind === 'etf' && h.symbol) {
-      const constituents = etfMap[h.symbol.toUpperCase()]
-      if (constituents && constituents.length) {
+    // Funds/ETFs (incl. name-only 529 fund-of-funds) explode into companies via the
+    // shared resolver — direct ETF holdings, a mutual-fund→ETF proxy, or a 529
+    // composition. Only what's still unresolvable stays as an opaque single line.
+    if (h.kind === 'etf') {
+      const res = fundConstituents(h.symbol, h.name, etfMap, proxyMap)
+      if (res) {
         let sumW = 0
-        for (const c of constituents) {
+        for (const c of res.list) {
           add(c.symbol, c.name ?? c.symbol, v * c.weight, true)
           sumW += c.weight
         }
-        if (sumW < 0.999) add(h.symbol, `${h.symbol.toUpperCase()} (other)`, v * (1 - sumW), false)
+        const label = h.symbol ? h.symbol.toUpperCase() : (h.name ?? 'fund')
+        if (sumW < 0.999) add(`${label}~OTHER`, `${label} (other)`, v * (1 - sumW), false)
       } else {
-        add(h.symbol, h.symbol.toUpperCase(), v, false)
-        unresolved.add(h.symbol.toUpperCase())
+        const label = h.symbol ? h.symbol.toUpperCase() : (h.name ?? 'Fund')
+        add(label, label, v, false)
+        unresolved.add(label)
       }
       continue
     }
@@ -239,49 +285,16 @@ export function perPositionLookThrough(
       }
     }
 
-    // Fund / ETF: explode via direct holdings, then via the mutual-fund proxy.
-    let source = p.symbol ? etfMap[p.symbol] : undefined
-    let status: PositionStatus = 'resolved'
-    let proxySymbol: string | undefined
-    if ((!source || source.length === 0) && p.symbol && proxyMap[p.symbol]) {
-      const proxy = proxyMap[p.symbol]!
-      const pc = etfMap[proxy]
-      if (pc && pc.length) {
-        source = pc
-        status = 'proxy'
-        proxySymbol = proxy
-      }
-    }
-    // Composition: a name-only fund-of-funds (e.g. a 529 portfolio) is recomposed
-    // from its underlying ETFs' holdings, weight-blended.
-    if (!source || source.length === 0) {
-      const comp = FUND_COMPOSITION[normLtName(p.name)]
-      if (comp) {
-        const merged = new Map<string, { symbol: string; name: string | null; weight: number }>()
-        let resolvedAny = false
-        for (const part of comp) {
-          const ec = etfMap[part.symbol.toUpperCase()]
-          if (!ec || ec.length === 0) continue
-          resolvedAny = true
-          for (const c of ec) {
-            const w = c.weight * part.weight
-            const ex = merged.get(c.symbol)
-            if (ex) ex.weight += w
-            else merged.set(c.symbol, { symbol: c.symbol, name: c.name, weight: w })
-          }
-        }
-        if (resolvedAny && merged.size) {
-          source = [...merged.values()]
-          status = 'proxy'
-          proxySymbol = comp.map((x) => x.symbol).join(' + ')
-        }
-      }
-    }
-    if (!source || source.length === 0) {
+    // Fund / ETF: explode into companies via the shared resolver (direct holdings,
+    // mutual-fund→ETF proxy, or 529 composition).
+    const res = fundConstituents(p.symbol, p.name, etfMap, proxyMap)
+    if (!res) {
       return { ...base, status: 'opaque' as const, constituents: [], remainder: 0 }
     }
+    const status: PositionStatus = res.via === p.symbol ? 'resolved' : 'proxy'
+    const proxySymbol = res.via === p.symbol ? undefined : res.via
 
-    const top = [...source].sort((a, b) => b.weight - a.weight).slice(0, m)
+    const top = [...res.list].sort((a, b) => b.weight - a.weight).slice(0, m)
     let shown = 0
     const constituents = top.map((c) => {
       shown += c.weight
