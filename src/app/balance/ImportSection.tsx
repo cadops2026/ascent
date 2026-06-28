@@ -35,6 +35,37 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
     setImports(data ?? [])
   }, [])
 
+  // Invoke the parser and await the call. If the invocation itself fails — the
+  // function never started, returned 5xx, or hit the Edge Function wall-clock
+  // limit on a large statement — and the row is still 'parsing' (the function
+  // didn't record its own error), mark it errored so it can't hang in "Parsing…"
+  // forever. The function sets 'parsed'/'error' itself on the happy/handled paths;
+  // this only backstops the cases where it never gets to.
+  const invokeParse = useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase.functions.invoke('parse-statements', { body: { import_id: id } })
+        if (error) {
+          const { data: cur } = await supabase.from('statement_imports').select('status').eq('id', id).single()
+          if (cur && (cur.status === 'parsing' || cur.status === 'uploaded')) {
+            await supabase
+              .from('statement_imports')
+              .update({ status: 'error', error: `Couldn't finish parsing (the file may be too large and timed out): ${error.message}` })
+              .eq('id', id)
+          }
+        }
+      } catch (e) {
+        await supabase
+          .from('statement_imports')
+          .update({ status: 'error', error: `Parse request failed: ${String(e)}` })
+          .eq('id', id)
+      } finally {
+        await load()
+      }
+    },
+    [load],
+  )
+
   useEffect(() => {
     void load()
   }, [load])
@@ -67,7 +98,7 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
         continue
       }
       await supabase.from('statement_imports').update({ file_path: path, status: 'parsing' }).eq('id', ins.id)
-      void supabase.functions.invoke('parse-statements', { body: { import_id: ins.id } })
+      void invokeParse(ins.id)
     }
     setUploading(false)
     await load()
@@ -139,8 +170,8 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
   }
   const retry = async (imp: StatementImport) => {
     await supabase.from('statement_imports').update({ status: 'parsing', error: null }).eq('id', imp.id)
-    void supabase.functions.invoke('parse-statements', { body: { import_id: imp.id } })
     await load()
+    void invokeParse(imp.id)
   }
 
   return (
@@ -243,10 +274,21 @@ function ImportHeader({
   onRetry: () => void
   onDismiss: () => void
 }) {
-  const tone =
-    imp.status === 'error' ? 'text-coral' : imp.status === 'committed' ? 'text-teal' : 'text-muted'
-  const label =
-    imp.status === 'uploaded' || imp.status === 'parsing'
+  // A row in 'parsing'/'uploaded' past the Edge Function wall-clock limit is
+  // effectively stuck — the parser can no longer be running — so treat it as
+  // stalled and offer a retry, even if the function never recorded an error.
+  const PARSE_STALE_MS = 150_000
+  const inFlight = imp.status === 'uploaded' || imp.status === 'parsing'
+  const stale = inFlight && Date.now() - new Date(imp.updated_at).getTime() > PARSE_STALE_MS
+
+  const tone = imp.status === 'error' || stale
+    ? 'text-coral'
+    : imp.status === 'committed'
+      ? 'text-teal'
+      : 'text-muted'
+  const label = stale
+    ? 'Stalled'
+    : inFlight
       ? 'Parsing…'
       : imp.status === 'parsed'
         ? 'Review'
@@ -262,10 +304,13 @@ function ImportHeader({
         {imp.status === 'error' && imp.error && (
           <div className="mt-0.5 text-xs text-coral">{imp.error}</div>
         )}
+        {stale && (
+          <div className="mt-0.5 text-xs text-coral">Parsing didn't finish — large files can time out. Retry, or remove and split it up.</div>
+        )}
       </div>
       <div className="flex items-center gap-3">
         <span className={`micro-label ${tone}`}>{label}</span>
-        {imp.status === 'error' && (
+        {(imp.status === 'error' || stale) && (
           <button type="button" onClick={onRetry} className="micro-label text-teal hover:text-ink">
             Retry
           </button>
