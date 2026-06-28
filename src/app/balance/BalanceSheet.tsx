@@ -36,7 +36,11 @@ export function BalanceSheet() {
     setRefreshing(true)
     setRefreshNote(null)
     const tickers = data.holdings.filter((h) => h.entry_mode === 'shares' && h.symbol)
-    const equities = tickers.filter((h) => h.kind === 'stock' || h.kind === 'etf').map((h) => h.symbol!.toUpperCase())
+    // 'cash' covers money-market funds held as shares (e.g. VMFXX) — they have a
+    // NAV ticker and must be priced like equities, not skipped as plain cash.
+    const equities = tickers
+      .filter((h) => h.kind === 'stock' || h.kind === 'etf' || h.kind === 'cash')
+      .map((h) => h.symbol!.toUpperCase())
     const crypto = tickers.filter((h) => h.kind === 'crypto').map((h) => h.symbol!.toUpperCase())
     try {
       if (equities.length) {
@@ -65,7 +69,7 @@ export function BalanceSheet() {
       (h) =>
         h.entry_mode === 'shares' &&
         h.symbol &&
-        ['stock', 'etf', 'crypto'].includes(h.kind) &&
+        ['stock', 'etf', 'crypto', 'cash'].includes(h.kind) &&
         holdingValue(h, data.quotes) == null,
     )
     if (!needsPricing) return
