@@ -85,7 +85,10 @@ Deno.serve(async (req) => {
   const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
   const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY')
-  const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-opus-4-8'
+  // Statement extraction is a structured-output task, not a reasoning one — a fast
+  // model keeps a large multi-page PDF inside the Edge Function wall-clock limit
+  // (Opus was timing out on big statements). Override with ANTHROPIC_MODEL if needed.
+  const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY)
 
