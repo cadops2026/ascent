@@ -33,6 +33,17 @@ const ID_MAP: Record<string, string> = {
   ETC: 'ethereum-classic',
   FIL: 'filecoin',
   APT: 'aptos',
+  // Migrated/rebranded or symbol≠id cases — verified live against CoinGecko.
+  // MATIC migrated to POL in 2024; the old `matic-network` id no longer prices.
+  POL: 'polygon-ecosystem-token',
+  INJ: 'injective-protocol',
+  RNDR: 'render-token',
+  ARB: 'arbitrum',
+  OP: 'optimism',
+  TAO: 'bittensor',
+  TRX: 'tron',
+  VIRTUAL: 'virtual-protocol',
+  SUN: 'sun-token',
 }
 
 function json(body: unknown, status = 200) {

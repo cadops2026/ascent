@@ -32,6 +32,13 @@ const cors = {
 
 const TTL_MS = 15 * 60 * 1000 // ~15-min cache (honest "real-time", never tick-by-tick)
 
+// Class-share tickers print with a slash on brokerage statements (BRK/B), but the
+// quote APIs each want their own separator: Finnhub uses a dot (BRK.B), Yahoo a
+// hyphen (BRK-B). We normalize per-vendor for the request but cache under the
+// ORIGINAL symbol so holdingValue's lookup (which keys on the stored symbol) matches.
+const finnhubSym = (s: string) => s.replace(/\//g, '.')
+const yahooSym = (s: string) => s.replace(/\//g, '-')
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -75,7 +82,7 @@ Deno.serve(async (req) => {
 
       // 1) Finnhub — equities/ETFs.
       const r = await fetch(
-        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${FINNHUB}`,
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(finnhubSym(sym))}&token=${FINNHUB}`,
       )
       if (r.ok) {
         const q = (await r.json()) as { c?: number; pc?: number }
@@ -87,7 +94,7 @@ Deno.serve(async (req) => {
 
       // 2) Fund-NAV fallback — mutual funds / money-market that Finnhub can't price.
       if (price == null) {
-        const nav = await fundNav(sym)
+        const nav = await fundNav(yahooSym(sym))
         if (nav) {
           price = nav.price
           prevClose = nav.prevClose
