@@ -50,12 +50,15 @@ export function LookThroughTab() {
       return
     }
     try {
-      const { error } = await supabase.functions.invoke('refresh-etf-holdings', { body: { etfs } })
+      const { data: res, error } = await supabase.functions.invoke('refresh-etf-holdings', { body: { etfs } })
       if (error) throw error
       await loadEtf()
+      if (res && typeof res.updated === 'number' && res.updated === 0) {
+        setNote('Couldn’t load fund holdings just now — the keyless source (Yahoo) may be rate-limiting. Try again in a moment.')
+      }
     } catch {
       setNote(
-        'ETF look-through unavailable — needs the refresh-etf-holdings function deployed + an FMP key in Supabase secrets.',
+        'Fund holdings unavailable — make sure the refresh-etf-holdings function is deployed. It works keyless via Yahoo; set an FMP key in Supabase secrets for more reliability.',
       )
     } finally {
       setRefreshing(false)
