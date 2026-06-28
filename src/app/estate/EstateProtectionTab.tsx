@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Panel, MicroLabel, Field, Input, Select, Button } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
-import { fmtMoneyCompact } from '../../lib/format'
 import { computeBalanceSheet, holdingValue } from '../../lib/finance/networth'
 import { estateExposure } from '../../lib/finance/estate'
 import { liquidityView } from '../../lib/finance/liquidity'
@@ -159,18 +158,7 @@ export function EstateProtectionTab() {
             {policies.length > 0 ? (
               <ul className="mb-4 space-y-1.5">
                 {policies.map((p) => (
-                  <li key={p.id} className="flex items-center gap-3 border-b border-line py-2 last:border-0 text-sm">
-                    <span className="w-40 text-ink">{INSURANCE_LABEL[p.kind as InsuranceKind] ?? p.kind}</span>
-                    <span className="flex-1 text-muted">{p.carrier ?? '—'}</span>
-                    <span className="tnum font-mono text-muted">{p.coverage != null ? fmtMoneyCompact(p.coverage) : '—'}</span>
-                    <button
-                      type="button"
-                      onClick={async () => { await supabase.from('insurance_policies').delete().eq('id', p.id); await loadProtection() }}
-                      className="micro-label text-faint hover:text-coral"
-                    >
-                      Remove
-                    </button>
-                  </li>
+                  <PolicyRow key={p.id} policy={p} onChanged={loadProtection} />
                 ))}
               </ul>
             ) : (
@@ -308,6 +296,85 @@ function DocRow({
         </Button>
       )}
       {vaultErr && <span className="w-full text-xs text-coral">{vaultErr}</span>}
+    </li>
+  )
+}
+
+function PolicyRow({ policy, onChanged }: { policy: InsurancePolicy; onChanged: () => void }) {
+  const [kind, setKind] = useState<InsuranceKind>(policy.kind as InsuranceKind)
+  const [carrier, setCarrier] = useState(policy.carrier ?? '')
+  const [coverage, setCoverage] = useState(policy.coverage != null ? String(policy.coverage) : '')
+  const [premium, setPremium] = useState(policy.premium != null ? String(policy.premium) : '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const dirty =
+    kind !== policy.kind ||
+    (carrier || '') !== (policy.carrier ?? '') ||
+    (coverage ? Number(coverage) : null) !== (policy.coverage ?? null) ||
+    (premium ? Number(premium) : null) !== (policy.premium ?? null)
+
+  const save = async () => {
+    setBusy(true)
+    setErr(null)
+    const { error } = await supabase
+      .from('insurance_policies')
+      .update({
+        kind,
+        carrier: carrier || null,
+        coverage: coverage ? Number(coverage) : null,
+        premium: premium ? Number(premium) : null,
+      })
+      .eq('id', policy.id)
+    setBusy(false)
+    if (error) {
+      setErr(error.message)
+      return
+    }
+    onChanged()
+  }
+
+  const remove = async () => {
+    setBusy(true)
+    await supabase.from('insurance_policies').delete().eq('id', policy.id)
+    setBusy(false)
+    onChanged()
+  }
+
+  return (
+    <li className="border-b border-line py-2.5 last:border-0">
+      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[10rem_1fr_7rem_7rem_auto]">
+        <Field label="Type">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as InsuranceKind)}>
+            {INSURANCE_KINDS.map((k) => (
+              <option key={k} value={k}>{INSURANCE_LABEL[k]}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Carrier">
+          <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Carrier" />
+        </Field>
+        <Field label="Coverage">
+          <Input type="number" value={coverage} onChange={(e) => setCoverage(e.target.value)} placeholder="0" />
+        </Field>
+        <Field label="Premium/yr">
+          <Input type="number" value={premium} onChange={(e) => setPremium(e.target.value)} placeholder="0" />
+        </Field>
+        <div className="flex items-center gap-2 pb-1.5">
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy || !dirty}
+            className="micro-label text-teal hover:text-ink disabled:cursor-default disabled:text-faint/40"
+          >
+            {busy ? '…' : dirty ? 'Save' : 'Saved'}
+          </button>
+          <button type="button" onClick={remove} disabled={busy} className="micro-label text-faint hover:text-coral">
+            Remove
+          </button>
+        </div>
+      </div>
+      {err && <p className="mt-1 text-xs text-coral">{err}</p>}
     </li>
   )
 }
