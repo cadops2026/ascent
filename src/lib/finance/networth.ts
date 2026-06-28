@@ -1,4 +1,4 @@
-import type { Holding, RealEstate, Liability } from '../db'
+import type { Holding, RealEstate, Liability, BasketLeg } from '../db'
 import { amortize } from './amortization'
 
 /** symbol (UPPERCASE) -> price */
@@ -22,6 +22,19 @@ const KIND_TO_CLASS: Record<string, AssetClass> = {
  * than a wrong zero).
  */
 export function holdingValue(h: Holding, quotes: QuoteMap): number | null {
+  // Composition-priced (e.g. a 529 portfolio): value live off its underlyings.
+  // Returns null until every leg's quote is cached, so the UI shows "pending"
+  // rather than an understated value.
+  const basket = h.synthetic_basket as BasketLeg[] | null
+  if (basket && basket.length) {
+    let v = 0
+    for (const leg of basket) {
+      const p = quotes[leg.symbol.toUpperCase()]
+      if (p == null) return null
+      v += leg.shares * p
+    }
+    return v
+  }
   if (h.entry_mode === 'amount') return h.manual_amount ?? 0
   if (h.shares == null || !h.symbol) return null
   const price = quotes[h.symbol.toUpperCase()]

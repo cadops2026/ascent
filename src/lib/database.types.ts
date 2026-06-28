@@ -271,6 +271,7 @@ export type Database = {
           proj_growth: number | null
           shares: number | null
           symbol: string | null
+          synthetic_basket: Json | null
           updated_at: string
           user_id: string
         }
@@ -286,6 +287,7 @@ export type Database = {
           proj_growth?: number | null
           shares?: number | null
           symbol?: string | null
+          synthetic_basket?: Json | null
           updated_at?: string
           user_id: string
         }
@@ -301,6 +303,7 @@ export type Database = {
           proj_growth?: number | null
           shares?: number | null
           symbol?: string | null
+          synthetic_basket?: Json | null
           updated_at?: string
           user_id?: string
         }
@@ -507,7 +510,9 @@ export type Database = {
           created_at: string
           dob: string | null
           filing_status: string | null
+          inflation_override: number | null
           plan_to_age: number | null
+          real_growth_override: number | null
           retire_age: number | null
           share_with: string[]
           state: string | null
@@ -518,7 +523,9 @@ export type Database = {
           created_at?: string
           dob?: string | null
           filing_status?: string | null
+          inflation_override?: number | null
           plan_to_age?: number | null
+          real_growth_override?: number | null
           retire_age?: number | null
           share_with?: string[]
           state?: string | null
@@ -529,7 +536,9 @@ export type Database = {
           created_at?: string
           dob?: string | null
           filing_status?: string | null
+          inflation_override?: number | null
           plan_to_age?: number | null
+          real_growth_override?: number | null
           retire_age?: number | null
           share_with?: string[]
           state?: string | null

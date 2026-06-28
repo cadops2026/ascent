@@ -10,6 +10,7 @@ import { useBalanceSheet } from './useBalanceSheet'
 import { AllocationPie } from './AllocationPie'
 import { NetToHeirsCard } from './NetToHeirsCard'
 import { ImportSection } from './ImportSection'
+import { AccountsSection } from './AccountsSection'
 import { HoldingsSection } from './HoldingsSection'
 import { PropertySection } from './PropertySection'
 
@@ -27,6 +28,11 @@ const FUND_ALIASES: Record<string, string> = {
   'vanguard total stock market index': 'VTSAX',
   'vanguard total international stock index': 'VTIAX',
   'vanguard growth index': 'VIGAX',
+  'vanguard tgt rmt 2050 inv fund': 'VFIFX',
+  'vanguard target retirement 2050': 'VFIFX',
+  'invesco main st sm cap r6': 'OSSIX',
+  'jp morgan mid cap eq r6': 'JPPEX',
+  'fidelity 500 index fund': 'FXAIX',
 }
 const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
@@ -55,9 +61,18 @@ export function BalanceSheet() {
     const tickers = data.holdings.filter((h) => h.entry_mode === 'shares' && h.symbol)
     // 'cash' covers money-market funds held as shares (e.g. VMFXX) — they have a
     // NAV ticker and must be priced like equities, not skipped as plain cash.
-    const equities = tickers
-      .filter((h) => h.kind === 'stock' || h.kind === 'etf' || h.kind === 'cash')
-      .map((h) => h.symbol!.toUpperCase())
+    // Composition-priced holdings (529s) add their underlying ETF legs (VTI/VXUS/VUG).
+    const basketSyms = data.holdings.flatMap(
+      (h) => ((h.synthetic_basket as { symbol: string }[] | null) ?? []).map((l) => l.symbol.toUpperCase()),
+    )
+    const equities = [
+      ...new Set([
+        ...tickers
+          .filter((h) => h.kind === 'stock' || h.kind === 'etf' || h.kind === 'cash')
+          .map((h) => h.symbol!.toUpperCase()),
+        ...basketSyms,
+      ]),
+    ]
     const crypto = tickers.filter((h) => h.kind === 'crypto').map((h) => h.symbol!.toUpperCase())
     try {
       if (equities.length) {
@@ -78,10 +93,11 @@ export function BalanceSheet() {
   }
 
   // One-click: set tickers on imported funds that came in name-only (no symbol),
-  // using the verified alias map, then price them. Avoids per-row typing.
-  const resolveFundTickers = async () => {
+  // using the verified alias map, then price them. Avoids per-row typing. `silent`
+  // suppresses the status note when run from the auto-pricing effect (calm by default).
+  const resolveFundTickers = async (silent = false) => {
     setRefreshing(true)
-    setRefreshNote(null)
+    if (!silent) setRefreshNote(null)
     const nameOnly = data.holdings.filter((h) => !h.symbol && h.name && h.entry_mode === 'shares')
     const setSyms: string[] = []
     try {
@@ -96,11 +112,12 @@ export function BalanceSheet() {
       }
       await reload()
     } catch (e) {
-      setRefreshNote(`Resolve failed: ${e instanceof Error ? e.message : String(e)}`)
+      if (!silent) setRefreshNote(`Resolve failed: ${e instanceof Error ? e.message : String(e)}`)
       setRefreshing(false)
       return
     }
     setRefreshing(false)
+    if (silent) return
     const unknown = nameOnly.length - setSyms.length
     setRefreshNote(
       setSyms.length
@@ -111,19 +128,31 @@ export function BalanceSheet() {
 
   // Auto-fetch quotes once after load so holdings price without a manual click.
   // refresh-quotes only fetches symbols whose cached quote is stale, so this is
-  // cheap on repeat mounts; the ref guard prevents a reload→refresh loop.
+  // cheap on repeat mounts; the ref guard prevents a reload→refresh loop. We also
+  // auto-resolve name-only funds in the alias map first, so imported funds that
+  // landed without a ticker price on their own rather than sitting "pending".
   useEffect(() => {
     if (loading || autoRefreshed.current) return
-    const needsPricing = data.holdings.some(
+    const hasUnpricedSymboled = data.holdings.some(
       (h) =>
         h.entry_mode === 'shares' &&
         h.symbol &&
         ['stock', 'etf', 'crypto', 'cash'].includes(h.kind) &&
         holdingValue(h, data.quotes) == null,
     )
-    if (!needsPricing) return
+    const hasResolvableNames = data.holdings.some(
+      (h) => !h.symbol && h.name && h.entry_mode === 'shares' && FUND_ALIASES[normName(h.name)],
+    )
+    // Composition-priced holdings (529s) whose underlying legs aren't cached yet.
+    const hasUnpricedBasket = data.holdings.some(
+      (h) => h.synthetic_basket != null && holdingValue(h, data.quotes) == null,
+    )
+    if (!hasUnpricedSymboled && !hasResolvableNames && !hasUnpricedBasket) return
     autoRefreshed.current = true
-    void refreshQuotes()
+    void (async () => {
+      if (hasResolvableNames) await resolveFundTickers(true)
+      if (hasUnpricedSymboled || hasUnpricedBasket) await refreshQuotes()
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, data.holdings])
 
@@ -185,6 +214,16 @@ export function BalanceSheet() {
       </div>
 
       <ImportSection userId={userId} reload={reload} />
+
+      {data.accounts.length > 0 && (
+        <AccountsSection
+          accounts={data.accounts}
+          holdings={data.holdings}
+          quotes={data.quotes}
+          userId={userId}
+          reload={reload}
+        />
+      )}
 
       <HoldingsSection
         accounts={data.accounts}
