@@ -13,6 +13,23 @@ import { ImportSection } from './ImportSection'
 import { HoldingsSection } from './HoldingsSection'
 import { PropertySection } from './PropertySection'
 
+// Verified fund-name → ticker map for imports that land with no ticker (brokerage
+// abbreviations like "Inst Plus" / "Idx Inst" don't search reliably, and some — e.g.
+// Cohen & Steers Realty — mis-resolve via open search). Each confirmed against its
+// live NAV. Keys are normName(name).
+const FUND_ALIASES: Record<string, string> = {
+  'vanguard explorer adm': 'VEXRX',
+  'vanguard institutional index inst plus': 'VIIIX',
+  'vanguard primecap adm': 'VPMAX',
+  'vanguard russell 1000 growth idx inst': 'VRGWX',
+  'cohen steers realty': 'CSRSX',
+  'john hancock dis v mc r6': 'JVMRX',
+  'vanguard total stock market index': 'VTSAX',
+  'vanguard total international stock index': 'VTIAX',
+  'vanguard growth index': 'VIGAX',
+}
+const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
 export function BalanceSheet() {
   const { session } = useAuth()
   const userId = session?.user.id ?? ''
@@ -60,6 +77,38 @@ export function BalanceSheet() {
     }
   }
 
+  // One-click: set tickers on imported funds that came in name-only (no symbol),
+  // using the verified alias map, then price them. Avoids per-row typing.
+  const resolveFundTickers = async () => {
+    setRefreshing(true)
+    setRefreshNote(null)
+    const nameOnly = data.holdings.filter((h) => !h.symbol && h.name && h.entry_mode === 'shares')
+    const setSyms: string[] = []
+    try {
+      for (const h of nameOnly) {
+        const t = FUND_ALIASES[normName(h.name!)]
+        if (!t) continue
+        await supabase.from('holdings').update({ symbol: t }).eq('id', h.id)
+        setSyms.push(t)
+      }
+      if (setSyms.length) {
+        await supabase.functions.invoke('refresh-quotes', { body: { symbols: [...new Set(setSyms)] } })
+      }
+      await reload()
+    } catch (e) {
+      setRefreshNote(`Resolve failed: ${e instanceof Error ? e.message : String(e)}`)
+      setRefreshing(false)
+      return
+    }
+    setRefreshing(false)
+    const unknown = nameOnly.length - setSyms.length
+    setRefreshNote(
+      setSyms.length
+        ? `Resolved ${setSyms.length} fund holding${setSyms.length > 1 ? 's' : ''}.${unknown ? ` ${unknown} unrecognized — use Ticker/Value on those rows.` : ''}`
+        : 'No recognized fund names to resolve — use the Ticker or Value button on each row.',
+    )
+  }
+
   // Auto-fetch quotes once after load so holdings price without a manual click.
   // refresh-quotes only fetches symbols whose cached quote is stale, so this is
   // cheap on repeat mounts; the ref guard prevents a reload→refresh loop.
@@ -91,14 +140,24 @@ export function BalanceSheet() {
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <PageHeader title="Balance Sheet" />
-        <button
-          type="button"
-          onClick={refreshQuotes}
-          disabled={refreshing}
-          className="micro-label text-faint hover:text-muted disabled:opacity-50"
-        >
-          {refreshing ? 'Refreshing…' : 'Refresh quotes'}
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => void resolveFundTickers()}
+            disabled={refreshing}
+            className="micro-label text-faint hover:text-muted disabled:opacity-50"
+          >
+            Resolve fund tickers
+          </button>
+          <button
+            type="button"
+            onClick={refreshQuotes}
+            disabled={refreshing}
+            className="micro-label text-faint hover:text-muted disabled:opacity-50"
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh quotes'}
+          </button>
+        </div>
       </div>
 
       {error && <AlertStrip tone="negative">{error}</AlertStrip>}
