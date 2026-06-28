@@ -1,5 +1,87 @@
 # HANDOFF — after P0 (Foundation)
 
+## Lot-level TLH + wash-sale — BUILT (working tree, off `main`; not yet committed) — NEEDS `db push`
+
+Optional-polish item — tax-loss harvesting at the lot level with wash-sale awareness, replacing the
+holding-level (blended-basis) view.
+- **Migration `20260628000000_tax_lots.sql`** — `tax_lots` (holding_id FK, shares, cost_basis, acquired_on),
+  RLS owner-only. **ACTIVATION: `supabase db push`.** Graceful until then (no lots → blended-basis fallback).
+- **`src/lib/finance/tax.ts`** — `tlhLotOpportunities(accounts, holdings, lots, quotes, asOf, minLoss)`:
+  values each lot at the holding's current price-per-share, returns only positions with a harvestable loss,
+  marks each losing lot short/long-term, and flags **wash-sale risk** when a same-security lot was acquired
+  within 30 days (routes those losses to `washBlockedLoss` vs `totalHarvestable`). Holdings without lots are
+  read at the blended `cost_basis`. The old `tlhOpportunities`/`TlhLot` were removed (fully subsumed).
+- **`src/app/tax/TaxPanels.tsx`** — lot-aware TLH readout (per-position, lot breakdown, ST/LT, wash-sale
+  badge, harvestable-vs-blocked totals). **`src/app/tax/TaxLotsEditor.tsx`** — add/remove dated lots per
+  taxable holding (writes `tax_lots`; shows per-lot gain/loss + lot-coverage). Wired into `TaxWithdrawalTab`
+  (loads lots, feeds the engine + editor; degrades silently if the table is absent).
+- **`tax_lots` (+ `tax_parameters`, `cma_params`, which were missing) added to `userData.ts` USER_TABLES** so
+  in-app export + delete-all cover them (#10 — account deletion already cascaded via the FK).
+- **Verified:** engine tsx hand-calc (harvestable 5000 / wash-blocked 2000; → 7000/0 with no recent buy; IRA
+  skipped; ST/LT correct) + TaxPanels TLH render-tested in a throwaway harness (screenshot correct).
+  tsc/build/lint green.
+
+## Insurance inline-edit — BUILT (working tree, off `main`; not yet committed)
+
+Estate-tab insurance rows are now editable in place. **`src/app/estate/EstateProtectionTab.tsx`** — new
+`PolicyRow` (type / carrier / coverage / premium, dirty-tracked Save + Remove) replaces the read-only row +
+separate delete. No schema change; the gap engine + add-form are unchanged. tsc/build/lint green. (Live
+in-app render not separately screenshotted — needs an authed session + a policy; the row mirrors the working
+add-policy form.)
+
+## Per-class rebalance-band UI — BUILT (working tree, off `main`; not yet committed)
+
+Optional-polish item — lets the user set a drift band *per asset class* instead of only the global one.
+Pure UI + wiring (the `rebalance_bands` table + RLS already existed; no migration/activation).
+- **`src/app/risk/RiskExposureTab.tsx`** — loads `rebalance_bands` on mount, adds a per-class drift-points
+  input grid (blank = the global `rebalance_band_pt`), builds `BandSpec[]` from the overrides, and threads
+  it into BOTH `evaluateAlerts` and `diversificationScan` (was `bands: []`). Save replaces the band set
+  wholesale (delete-then-insert, owner-scoped) so clearing an override reverts that class to global.
+- Because both consumers read the same `BandSpec[]`, a tighter band on a volatile sleeve (e.g. crypto)
+  flags drift sooner in the digest AND the diversification map simultaneously (invariant #1).
+- **Verified** via tsx end-to-end: a 12-pt override clears a 10-pt crypto drift in both consumers; a 3-pt
+  override breaches in both; the scanner's `outsideBand` always equals whether the alert fires. tsc/build/
+  lint green. (Live in-app render not separately screenshotted — the inputs mirror the working target-
+  allocation inputs and need an authed session + holdings to mount; engine path proven exhaustively.)
+
+## Diversification-gap scanner — BUILT (working tree, off `main`; not yet committed)
+
+Optional-polish item — the "measure exposure" core, surfaced as calm context on the Risk tab. Maps where
+the current mix sits vs the chosen target; it is context, NEVER a signal (#5/#7) — the pre-committed
+band-breach *signal* stays solely in the alert engine.
+- **`src/lib/finance/alertengine.ts`** — extracted `evalClassDrift(current, target, band, rules)` (the
+  drift + band-breach predicate) as the single source of truth (#1); the rebalance loop now calls it.
+  Behavior-preserving (regression-verified: same `rebalance_band` alerts before/after). Mirrored into the
+  vendored Deno copy `supabase/functions/_shared/finance/alertengine.ts` — `deno check` clean on the cron.
+- **`src/lib/finance/diversification.ts`** — `diversificationScan(byClass, targets, bands, rules)` → per-class
+  signed gap vs target + direction + `outsideBand` (via `evalClassDrift`), unfilled target slots (intended
+  but unheld), uncovered exposure (held with no target), `outsideBandCount`, and `alignment` (0–1 =
+  1 − ½·Σ|current−target|, the total-variation distance). Pure.
+- **`src/app/risk/DiversificationPanel.tsx`** — presentational (pure props), center-anchored over/under
+  drift bars, alignment header, unfilled/uncovered lines, context-not-signal disclaimer. Wired into
+  `RiskExposureTab` after `ExposurePanels`, fed by a memo using the *same* targets/bands/rules as the digest.
+- **Verified:** engine hand-calc via tsx (alignment 0.75; gaps/holes/uncovered correct; Crypto/Cash exactly
+  at the 5-pt band correctly do NOT breach; alert-engine output unchanged) + panel render-tested in a
+  throwaway Vite harness across drifted / perfectly-aligned / no-target states (screenshot looked right).
+  tsc/build/lint green; vendored cron `deno check` green.
+
+## Inflation forward rates in the Monte Carlo — BUILT (working tree, off `main`; not yet committed)
+
+Optional-polish item tightening invariant #2. The MC works in real (today's) dollars by deflating each
+year's nominal return; it was deflating year `y` by `rateForHorizon(y)` — the *average* inflation from
+today to year `y` — which over- or under-deflates on a sloped curve because ∏(1+avg_y) ≠ (1+avg_H)^H.
+- **`src/lib/finance/inflation.ts`** — `InflationCurve` gains `forwardRate(y)`: the marginal one-year rate
+  for year `y` implied by the average curve, `C(y)/C(y−1)−1` where `C(k)=(1+rateForHorizon(k))^k`. By
+  construction `∏_{1..H}(1+forwardRate) = (1+rateForHorizon(H))^H`, so cumulative real wealth is exact.
+  `rateForHorizon` is unchanged and still used for single end-of-horizon deflation (macro-context card).
+- **`src/lib/finance/montecarlo.ts`** — the per-year deflation now reads `infl.forwardRate(y)`.
+- **Verified** against the real engine (throwaway in-repo tsx harness, then removed): identity holds to
+  1e-9 on a sloped EXPINF-shaped curve; `forwardRate(1)=avg(1)`; flat curve → forwards == average so the
+  default seeded (flat) case is byte-identical (flat-curve MC success/terminal unchanged — no regression);
+  sloped-curve success shifts sanely. No Deno-vendored copy of these files, so nothing to sync. tsc/build/
+  lint green. **No browser-preview verification:** against the default flat curve the output is identical,
+  and the sloped path needs live Cleveland-Fed EXPINF data the sandbox can't load — proof is the math.
+
 ## P8 Macro-context overlay — BUILT, branch `feature/macro-context-overlay` (stacked on the advisor)
 
 The second P8 overlay (spec §2) — context, NOT a signal. Deterministic: consensus enters only structurally
