@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../auth/AuthProvider'
 import { Panel, Figure, MicroLabel, AlertStrip, Input, Button } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
 import { fmtMoneyCompact } from '../../lib/format'
-import { computeBalanceSheet } from '../../lib/finance/networth'
+import { computeBalanceSheet, holdingValue } from '../../lib/finance/networth'
 import type { FilingStatus } from '../../lib/db'
 import { useBalanceSheet } from './useBalanceSheet'
 import { AllocationPie } from './AllocationPie'
@@ -19,6 +19,7 @@ export function BalanceSheet() {
   const { data, loading, error, reload } = useBalanceSheet()
   const [refreshing, setRefreshing] = useState(false)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
+  const autoRefreshed = useRef(false)
 
   const bs = useMemo(
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
@@ -48,14 +49,30 @@ export function BalanceSheet() {
       }
       if (!equities.length && !crypto.length) setRefreshNote('No ticker/share holdings to price.')
       await reload()
-    } catch {
-      setRefreshNote(
-        'Quote refresh unavailable — the Edge Functions need deploying + API keys in Supabase secrets (P1 wiring).',
-      )
+    } catch (e) {
+      setRefreshNote(`Quote refresh failed: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setRefreshing(false)
     }
   }
+
+  // Auto-fetch quotes once after load so holdings price without a manual click.
+  // refresh-quotes only fetches symbols whose cached quote is stale, so this is
+  // cheap on repeat mounts; the ref guard prevents a reload→refresh loop.
+  useEffect(() => {
+    if (loading || autoRefreshed.current) return
+    const needsPricing = data.holdings.some(
+      (h) =>
+        h.entry_mode === 'shares' &&
+        h.symbol &&
+        ['stock', 'etf', 'crypto'].includes(h.kind) &&
+        holdingValue(h, data.quotes) == null,
+    )
+    if (!needsPricing) return
+    autoRefreshed.current = true
+    void refreshQuotes()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, data.holdings])
 
   if (loading) {
     return (
