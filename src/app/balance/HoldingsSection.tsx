@@ -46,6 +46,18 @@ export function HoldingsSection({
     await reload()
   }
 
+  // Set a manual dollar value for holdings with no public quote (529 plans, private
+  // equity, foreign funds). Switches the row to amount-mode so it's valued directly.
+  const setValue = async (h: Holding) => {
+    const cur = h.entry_mode === 'amount' && h.manual_amount != null ? String(h.manual_amount) : ''
+    const v = window.prompt(`Market value ($) for "${h.symbol || h.name || 'holding'}":`, cur)
+    if (v == null) return
+    const n = Number(v.replace(/[,$\s]/g, ''))
+    if (!Number.isFinite(n) || n < 0) return
+    await supabase.from('holdings').update({ entry_mode: 'amount', manual_amount: n }).eq('id', h.id)
+    await reload()
+  }
+
   const removeAll = async () => {
     if (!window.confirm(`Remove all ${holdings.length} holdings? This can't be undone.`)) return
     await supabase.from('holdings').delete().eq('user_id', userId)
@@ -125,6 +137,13 @@ export function HoldingsSection({
                   className="micro-label text-faint hover:text-teal"
                 >
                   Ticker
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void setValue(h)}
+                  className="micro-label text-faint hover:text-teal"
+                >
+                  Value
                 </button>
                 <button
                   type="button"
