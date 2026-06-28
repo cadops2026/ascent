@@ -5,9 +5,11 @@ import type { InflationCurve } from './inflation'
  * Monte Carlo wealth simulation. Correlated class returns via a single market
  * factor (corr = each class's correlation to US equity); crypto's idiosyncratic
  * shock is Student-t (fat-tailed — invariant #12). Works in REAL (today's
- * dollars): each year's nominal return is deflated by the horizon-matched
- * inflation curve (invariant #2), so contributions/withdrawals stay constant in
- * real terms and the output bands are already in today's dollars (invariant #4).
+ * dollars): each year's nominal return is deflated by that year's *forward*
+ * inflation rate from the horizon-matched curve (invariant #2) — not the
+ * average-to-horizon rate, which would mis-deflate on a sloped curve — so
+ * contributions/withdrawals stay constant in real terms and the output bands
+ * are already in today's dollars (invariant #4).
  */
 export interface McParams {
   initialWealth: number
@@ -113,7 +115,7 @@ export function monteCarlo(
     let ruined = false
 
     for (let y = 1; y <= years; y++) {
-      const annualInfl = infl.rateForHorizon(y)
+      const annualInfl = infl.forwardRate(y)
       const F = randn(rng)
       let portRet = 0
       for (let i = 0; i < classes.length; i++) {

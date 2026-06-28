@@ -11,8 +11,16 @@ export interface InflRow {
 }
 
 export interface InflationCurve {
-  /** Expected average annual inflation to horizon h (years). */
+  /** Expected *average* annual inflation from today to horizon h (years).
+   *  Use this to deflate a single end-of-horizon value. */
   rateForHorizon: (h: number) => number
+  /** Expected *forward* (marginal) one-year inflation rate applying during
+   *  year y (y ≥ 1, i.e. from year y−1 to year y), implied by the average curve.
+   *  Use this for year-by-year real deflation in a multi-period simulation —
+   *  deflating each year by the average-to-that-year (rateForHorizon) would be
+   *  wrong on a sloped curve. By construction ∏_{y=1..H}(1+forwardRate(y)) =
+   *  (1+rateForHorizon(H))^H, so cumulative real wealth stays exact (invariant #2). */
+  forwardRate: (y: number) => number
   source: string
 }
 
@@ -48,5 +56,15 @@ export function buildInflationCurve(rows: InflRow[]): InflationCurve {
     return last.v
   }
 
-  return { rateForHorizon, source: chosen }
+  // Forward one-year rate for year y from the cumulative inflation factors:
+  //   C(k) = (1 + rateForHorizon(k))^k,  forward(y) = C(y)/C(y-1) − 1.
+  // C(0) = 1, so forward(1) = rateForHorizon(1); for a flat curve every
+  // forward equals the average (no change vs. deflating by the average).
+  const cumFactor = (k: number): number => Math.pow(1 + rateForHorizon(k), k)
+  const forwardRate = (y: number): number => {
+    const yr = Math.max(1, Math.round(y))
+    return cumFactor(yr) / cumFactor(yr - 1) - 1
+  }
+
+  return { rateForHorizon, forwardRate, source: chosen }
 }
