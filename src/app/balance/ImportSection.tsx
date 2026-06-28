@@ -151,44 +151,64 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
     const cands = (imp.candidates as unknown as ImportCandidate[]) ?? []
     const ex = excluded[imp.id] ?? new Set<number>()
     const summary = imp.summary as Summary
+    const institution = summary?.institution ?? null
+    const defaultTax: TaxType = (TAX_TYPES as readonly string[]).includes(summary?.account_type ?? '')
+      ? (summary!.account_type as TaxType)
+      : 'taxable'
 
-    let accountId: string | null = null
-    if (summary?.institution) {
-      const tax: TaxType = (TAX_TYPES as readonly string[]).includes(summary.account_type ?? '')
-        ? (summary.account_type as TaxType)
-        : 'taxable'
-      // Reuse an account with the same name + type instead of dup'ing it on re-import.
+    // Account resolution, lazy + cached. A consolidated statement splits into one
+    // account per (name, tax_type): a per-holding account_label/account_type overrides
+    // the statement default, so e.g. "Roth IRA"-labeled rows land in a roth_ira account
+    // ("{institution} Roth IRA") instead of collapsing into one taxable account.
+    const acctCache = new Map<string, string | null>()
+    const resolveAccount = async (name: string | null, tax: TaxType): Promise<string | null> => {
+      if (!name) return null
+      const cacheKey = `${name}|${tax}`
+      if (acctCache.has(cacheKey)) return acctCache.get(cacheKey) ?? null
       const { data: existing } = await supabase
         .from('accounts')
         .select('id')
-        .eq('name', summary.institution)
+        .eq('name', name)
         .eq('tax_type', tax)
         .limit(1)
         .maybeSingle()
-      if (existing) accountId = existing.id
+      let id: string | null
+      if (existing) id = existing.id
       else {
         const { data: acc } = await supabase
           .from('accounts')
-          .insert({ user_id: userId, name: summary.institution, tax_type: tax })
+          .insert({ user_id: userId, name, tax_type: tax, institution })
           .select('id')
           .single()
-        accountId = acc?.id ?? null
+        id = acc?.id ?? null
       }
+      acctCache.set(cacheKey, id)
+      return id
     }
+    const accountNameFor = (c: HoldingCandidate): string | null => {
+      const label = c.account_label?.trim()
+      return label ? (institution ? `${institution} ${label}` : label) : institution
+    }
+    const accountTaxFor = (c: HoldingCandidate): TaxType =>
+      (TAX_TYPES as readonly string[]).includes(c.account_type ?? '') ? (c.account_type as TaxType) : defaultTax
 
-    // Dedup: build keys for what the user already holds so the same position/amount
-    // isn't imported twice (re-imports, overlapping statements). The Set also grows
-    // as we insert, so duplicate rows within one statement are collapsed too.
-    const [{ data: exH }, { data: exL }] = await Promise.all([
+    // Dedup keys on the account NAME (not the raw id) so re-imports collapse onto
+    // existing rows even if a look-alike account row exists. The Set grows as we
+    // insert, collapsing duplicate rows within one statement too.
+    const nameKey = (s: string | null) => (s ?? '').trim().toLowerCase()
+    const [{ data: exH }, { data: exL }, { data: exAcc }] = await Promise.all([
       supabase.from('holdings').select('account_id, symbol, name, kind, entry_mode, shares, manual_amount'),
       supabase.from('liabilities').select('label, kind, orig_balance'),
+      supabase.from('accounts').select('id, name'),
     ])
+    const acctNameById = new Map((exAcc ?? []).map((a) => [a.id, nameKey(a.name)]))
     const seenH = new Set<string>()
     for (const h of exH ?? []) {
       const label = (h.symbol || h.name || '').toString()
       if (!label) continue
       const mode = h.entry_mode === 'shares' ? 'shares' : 'amount'
-      seenH.add(holdingKey(h.account_id, label, h.kind, mode, (mode === 'shares' ? h.shares : h.manual_amount) ?? 0))
+      const acctName = h.account_id ? (acctNameById.get(h.account_id) ?? '') : ''
+      seenH.add(holdingKey(acctName, label, h.kind, mode, (mode === 'shares' ? h.shares : h.manual_amount) ?? 0))
     }
     const seenL = new Set<string>()
     for (const l of exL ?? []) seenL.add(liabilityKey((l.label ?? '').toString(), l.kind, l.orig_balance ?? 0))
@@ -205,12 +225,14 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
         if (!hasShares && !hasAmount) continue
         const label = (c.symbol || c.name || '').toString()
         const mode = hasShares ? 'shares' : 'amount'
-        const key = holdingKey(accountId, label, c.kind, mode, (hasShares ? c.shares : c.amount) ?? 0)
+        const acctName = accountNameFor(c)
+        const key = holdingKey(nameKey(acctName), label, c.kind, mode, (hasShares ? c.shares : c.amount) ?? 0)
         if (seenH.has(key)) {
           skipped++
           continue
         }
         seenH.add(key)
+        const accountId = await resolveAccount(acctName, accountTaxFor(c))
         await supabase.from('holdings').insert({
           user_id: userId,
           account_id: accountId,
@@ -504,7 +526,6 @@ function candLabel(c: ImportCandidate): string {
 function candDetail(c: ImportCandidate): string {
   if (c.row_type === 'liability') return c.balance != null ? fmtMoney(c.balance) : '—'
   const h = c as HoldingCandidate
-  if (h.shares != null) return `${h.shares} sh`
-  if (h.amount != null) return fmtMoney(h.amount)
-  return '—'
+  const amt = h.shares != null ? `${h.shares} sh` : h.amount != null ? fmtMoney(h.amount) : '—'
+  return h.account_label ? `${amt} · ${h.account_label}` : amt
 }

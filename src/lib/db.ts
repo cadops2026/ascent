@@ -17,6 +17,13 @@ export type InsurancePolicy = Row<'insurance_policies'>
 export type EstateDoc = Row<'estate_docs'>
 export type TaxLot = Row<'tax_lots'>
 
+/* One leg of a composition-priced holding (holdings.synthetic_basket jsonb): the
+ * holding re-expressed as effective shares of a priceable underlying. */
+export interface BasketLeg {
+  symbol: string
+  shares: number
+}
+
 /* Shape of one extracted candidate row in statement_imports.candidates (jsonb). */
 export interface HoldingCandidate {
   row_type: 'holding'
@@ -27,6 +34,11 @@ export interface HoldingCandidate {
   amount?: number
   cost_basis?: number
   confidence: 'high' | 'medium' | 'low'
+  /** Sub-account this position sits in on a consolidated statement (e.g. "Roth IRA",
+   *  "Brokerage", "HSA"). Lets one statement split into the right accounts. */
+  account_label?: string
+  /** Tax type for this position's sub-account; one of TAX_TYPES. */
+  account_type?: TaxType
 }
 export interface LiabilityCandidate {
   row_type: 'liability'

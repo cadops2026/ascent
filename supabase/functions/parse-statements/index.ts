@@ -40,6 +40,19 @@ const SCHEMA = {
           amount: { type: 'number', description: 'market value USD when shares unknown' },
           cost_basis: { type: 'number' },
           confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          account_label: {
+            type: 'string',
+            description:
+              "sub-account this position sits in on a consolidated statement, e.g. 'Roth IRA', " +
+              "'Individual Brokerage', 'Traditional IRA', 'HSA', '529'. Omit if the statement is a " +
+              'single account. Do NOT append this to name.',
+          },
+          account_type: {
+            type: 'string',
+            description:
+              'tax type of THIS position\'s sub-account: taxable | trad_401k | roth_401k | trad_ira | ' +
+              'roth_ira | hsa | sep_ira | solo_401k | 529 | cash_balance_db | trust | other',
+          },
         },
         required: ['kind', 'confidence'],
       },
@@ -67,8 +80,13 @@ const SYSTEM =
   'You extract structured holdings and liabilities from a personal financial statement ' +
   '(brokerage, bank, retirement, or mortgage). Read carefully. Use the ticker when shown. ' +
   'Use shares for share-based positions; use amount (USD market value) for cash or when shares ' +
-  "aren't shown. Map account type to the closest enum. Set confidence per row. Do NOT invent " +
-  'positions — only extract what the document shows. Return data only.'
+  "aren't shown. Map account type to the closest enum. Set confidence per row. " +
+  'IMPORTANT: many statements are CONSOLIDATED — one document covering several accounts ' +
+  '(e.g. an Individual Brokerage AND a Roth IRA, or his/her accounts). For each holding, set ' +
+  'account_label and account_type to the sub-account it belongs to, so they can be split correctly. ' +
+  'Never disambiguate by appending the account to a holding name — use account_label instead, and ' +
+  'keep name as the clean security name. The top-level institution/account_type describe the ' +
+  'primary/default account. Do NOT invent positions — only extract what the document shows. Return data only.'
 
 function mediaType(name: string): { kind: 'pdf' | 'image' | 'text'; mime: string } {
   const ext = name.toLowerCase().split('.').pop() ?? ''
