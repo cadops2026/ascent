@@ -81,6 +81,24 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
     [load],
   )
 
+  // Parse a batch of imports with bounded concurrency. Firing every file at once
+  // stampedes the parser (concurrent model calls throttle, and some never finish),
+  // which is how a folder of statements ends up with rows stuck "pending".
+  const parseQueue = useCallback(
+    async (ids: string[]) => {
+      const CONCURRENCY = 3
+      let next = 0
+      const worker = async () => {
+        while (next < ids.length) {
+          const id = ids[next++]
+          if (id) await invokeParse(id)
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, ids.length) }, worker))
+    },
+    [invokeParse],
+  )
+
   useEffect(() => {
     void load()
   }, [load])
@@ -99,6 +117,7 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
 
   const upload = async (files: FileList | File[]) => {
     setUploading(true)
+    const toParse: string[] = []
     for (const file of Array.from(files)) {
       const { data: ins } = await supabase
         .from('statement_imports')
@@ -113,10 +132,11 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
         continue
       }
       await supabase.from('statement_imports').update({ file_path: path, status: 'parsing' }).eq('id', ins.id)
-      void invokeParse(ins.id)
+      toParse.push(ins.id)
     }
     setUploading(false)
     await load()
+    void parseQueue(toParse) // bounded concurrency — no stampede
   }
 
   const toggle = (importId: string, idx: number) =>
@@ -240,6 +260,23 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
     void invokeParse(imp.id)
   }
 
+  // Rows that aren't done: still in flight, or errored. (Not 'parsed' — those are
+  // awaiting your review — and not 'committed'.) Bulk-retry or clear them at once.
+  const stuck = imports.filter((i) => i.status === 'uploaded' || i.status === 'parsing' || i.status === 'error')
+  const bulkRetry = async () => {
+    const ids = stuck.map((i) => i.id)
+    if (ids.length === 0) return
+    await supabase.from('statement_imports').update({ status: 'parsing', error: null }).in('id', ids)
+    await load()
+    void parseQueue(ids)
+  }
+  const bulkClear = async () => {
+    const ids = stuck.map((i) => i.id)
+    if (ids.length === 0) return
+    await supabase.from('statement_imports').update({ status: 'dismissed' }).in('id', ids)
+    await load()
+  }
+
   return (
     <Panel label="Import statements" right={<MicroLabel className="text-faint">Claude · review before import</MicroLabel>}>
       <DropZone
@@ -255,6 +292,18 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
         hidden
         onChange={(e) => e.target.files && upload(e.target.files)}
       />
+
+      {stuck.length > 1 && (
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-line bg-panel-hi px-3 py-2 text-xs">
+          <span className="text-muted">{stuck.length} pending or stuck</span>
+          <button type="button" onClick={() => void bulkRetry()} className="micro-label text-teal hover:text-ink">
+            Retry all
+          </button>
+          <button type="button" onClick={() => void bulkClear()} className="micro-label text-faint hover:text-coral">
+            Clear all
+          </button>
+        </div>
+      )}
 
       {imports.length > 0 && (
         <ul className="mt-4 space-y-3">
