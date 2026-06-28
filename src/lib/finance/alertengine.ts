@@ -65,6 +65,32 @@ export interface EvaluatedAlert {
 
 const PAYOFF_WINDOW_MONTHS = 12
 
+/**
+ * Drift of one class vs its target, and whether it breaches the band. The single
+ * source of truth for "is this class outside its rebalance band" (invariant #1) —
+ * the alert digest *and* the diversification-gap context map both read this, so a
+ * panel can never disagree with the pre-committed signal. Pure.
+ */
+export interface ClassDrift {
+  driftPts: number // absolute |current − target| in points
+  absLimit: number | null // absolute band that applies (per-class override or default)
+  relLimit: number | null // relative band (% of target) if set
+  breach: boolean // outside the band — the same condition that fires a rebalance_band alert
+}
+export function evalClassDrift(
+  current: number,
+  target: number,
+  band: BandSpec | undefined,
+  rules: AlertRuleSet,
+): ClassDrift {
+  const driftPts = Math.abs(current - target) * 100
+  const absLimit = band?.abs_pts ?? rules.rebalance_band_pt ?? null
+  const relLimit = band?.rel_pct ?? null
+  const breachAbs = absLimit != null && driftPts > absLimit
+  const breachRel = relLimit != null && target > 0 && driftPts / (target * 100) > relLimit / 100
+  return { driftPts, absLimit, relLimit, breach: breachAbs || breachRel }
+}
+
 export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
   const out: EvaluatedAlert[] = []
   const { byClass, lookThrough: lt, targets, bands, rules } = input
@@ -75,13 +101,9 @@ export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
     for (const t of targets) {
       if (t.target_pct == null) continue
       const cur = currentByClass.get(t.asset_class as ClassSlice['class']) ?? 0
-      const driftPts = Math.abs(cur - t.target_pct) * 100
       const band = bands.find((b) => b.asset_class === t.asset_class)
-      const absLimit = band?.abs_pts ?? rules.rebalance_band_pt ?? null
-      const relLimit = band?.rel_pct ?? null
-      const breachAbs = absLimit != null && driftPts > absLimit
-      const breachRel = relLimit != null && t.target_pct > 0 && driftPts / (t.target_pct * 100) > relLimit / 100
-      if (breachAbs || breachRel) {
+      const { driftPts, breach } = evalClassDrift(cur, t.target_pct, band, rules)
+      if (breach) {
         out.push({
           kind: 'rebalance_band',
           severity: 'caution',

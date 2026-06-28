@@ -58,6 +58,29 @@ export interface EvaluatedAlert {
 
 const PAYOFF_WINDOW_MONTHS = 12
 
+// Drift of one class vs its target + band-breach predicate. Single source of truth
+// for "outside the rebalance band" (invariant #1) — kept identical to the in-app
+// engine so the diversification-gap context map can never disagree with the digest.
+export interface ClassDrift {
+  driftPts: number
+  absLimit: number | null
+  relLimit: number | null
+  breach: boolean
+}
+export function evalClassDrift(
+  current: number,
+  target: number,
+  band: BandSpec | undefined,
+  rules: AlertRuleSet,
+): ClassDrift {
+  const driftPts = Math.abs(current - target) * 100
+  const absLimit = band?.abs_pts ?? rules.rebalance_band_pt ?? null
+  const relLimit = band?.rel_pct ?? null
+  const breachAbs = absLimit != null && driftPts > absLimit
+  const breachRel = relLimit != null && target > 0 && driftPts / (target * 100) > relLimit / 100
+  return { driftPts, absLimit, relLimit, breach: breachAbs || breachRel }
+}
+
 export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
   const out: EvaluatedAlert[] = []
   const { byClass, lookThrough: lt, targets, bands, rules } = input
@@ -68,13 +91,9 @@ export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
     for (const t of targets) {
       if (t.target_pct == null) continue
       const cur = currentByClass.get(t.asset_class as ClassSlice['class']) ?? 0
-      const driftPts = Math.abs(cur - t.target_pct) * 100
       const band = bands.find((b) => b.asset_class === t.asset_class)
-      const absLimit = band?.abs_pts ?? rules.rebalance_band_pt ?? null
-      const relLimit = band?.rel_pct ?? null
-      const breachAbs = absLimit != null && driftPts > absLimit
-      const breachRel = relLimit != null && t.target_pct > 0 && driftPts / (t.target_pct * 100) > relLimit / 100
-      if (breachAbs || breachRel) {
+      const { driftPts, breach } = evalClassDrift(cur, t.target_pct, band, rules)
+      if (breach) {
         out.push({
           kind: 'rebalance_band',
           severity: 'caution',

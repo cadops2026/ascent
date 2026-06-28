@@ -11,8 +11,11 @@ import { runAllStress } from '../../lib/finance/drawdownstress'
 import { blastRadius, factorExposure, exposureNarrative } from '../../lib/finance/exposure'
 import { mortgageAsShortBond } from '../../lib/finance/mortgagebond'
 import { evaluateAlerts } from '../../lib/finance/alertengine'
+import type { BandSpec } from '../../lib/finance/alertengine'
+import { diversificationScan } from '../../lib/finance/diversification'
 import { amortize } from '../../lib/finance/amortization'
 import { ExposurePanels } from './ExposurePanels'
+import { DiversificationPanel } from './DiversificationPanel'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { useTaxParams } from '../../lib/useTaxParams'
 import { useCmaParams } from '../../lib/useCmaParams'
@@ -27,6 +30,7 @@ const CLASS_TO_UNI: Record<AssetClass, string> = {
 
 interface UniBeta { class: string; corr_to_us_equity: number | null }
 interface TargetRow { asset_class: string; target_pct: number | null }
+interface BandRow { asset_class: string; abs_pts: number | null; rel_pct: number | null }
 interface RulesRow {
   rebalance_band_pt: number | null
   single_name_pct: number | null
@@ -44,6 +48,7 @@ export function RiskExposureTab() {
 
   // Editable alert config (pre-committed thresholds). Loaded from DB, saved on demand.
   const [targets, setTargets] = useState<Record<string, number>>({}) // class -> target %
+  const [classBands, setClassBands] = useState<Record<string, string>>({}) // class -> abs drift-pt override ('' = use global)
   const [bandPt, setBandPt] = useState(5)
   const [singleNamePct, setSingleNamePct] = useState(10)
   const [narrativePct, setNarrativePct] = useState(20)
@@ -55,10 +60,11 @@ export function RiskExposureTab() {
 
   useEffect(() => {
     void (async () => {
-      const [etf, uni, tgt, rule] = await Promise.all([
+      const [etf, uni, tgt, band, rule] = await Promise.all([
         supabase.from('etf_holdings').select('etf_symbol, holding_symbol, holding_name, weight'),
         supabase.from('asset_class_universe').select('class, corr_to_us_equity'),
         supabase.from('target_allocation').select('asset_class, target_pct'),
+        supabase.from('rebalance_bands').select('asset_class, abs_pts, rel_pct'),
         supabase.from('alert_rules').select('rebalance_band_pt, single_name_pct, narrative_pct, cadence').maybeSingle(),
       ])
       setEtfRows((etf.data ?? []) as EtfHoldingRow[])
@@ -68,6 +74,12 @@ export function RiskExposureTab() {
         const t: Record<string, number> = {}
         for (const r of tRows) if (r.target_pct != null) t[r.asset_class] = Math.round(r.target_pct * 1000) / 10
         setTargets(t)
+      }
+      const bRows = (band.data ?? []) as BandRow[]
+      if (bRows.length > 0) {
+        const cb: Record<string, string> = {}
+        for (const r of bRows) if (r.abs_pts != null) cb[r.asset_class] = String(r.abs_pts)
+        setClassBands(cb)
       }
       const r = rule.data as RulesRow | null
       if (r) {
@@ -117,6 +129,16 @@ export function RiskExposureTab() {
   const narrative = useMemo(() => exposureNarrative(lt, fx, worst), [lt, fx, worst])
   const mortgageBonds = useMemo(() => mortgageAsShortBond(data.liabilities), [data.liabilities])
 
+  // Per-class drift-band overrides (blank → fall back to the global rebalance_band_pt).
+  const bandSpecs = useMemo<BandSpec[]>(
+    () =>
+      Object.entries(classBands)
+        .map(([asset_class, raw]) => ({ asset_class, abs: raw.trim() === '' ? NaN : Number(raw) }))
+        .filter(({ abs }) => Number.isFinite(abs) && abs > 0)
+        .map(({ asset_class, abs }) => ({ asset_class, abs_pts: abs, rel_pct: null })),
+    [classBands],
+  )
+
   const alerts = useMemo(() => {
     const mortgages = data.liabilities
       .filter((l) => l.kind === 'mortgage')
@@ -129,7 +151,7 @@ export function RiskExposureTab() {
       investable: bs.investable,
       lookThrough: lt,
       targets: Object.entries(targets).map(([asset_class, pct]) => ({ asset_class, target_pct: pct / 100 })),
-      bands: [],
+      bands: bandSpecs,
       rules: {
         rebalance_band_pt: bandPt,
         single_name_pct: singleNamePct / 100,
@@ -142,7 +164,26 @@ export function RiskExposureTab() {
       cmaParamsYear,
       currentYear: new Date().getFullYear(),
     })
-  }, [bs, lt, targets, bandPt, singleNamePct, narrativePct, cadence, data.liabilities, taxParamsYear, cmaParamsYear])
+  }, [bs, lt, targets, bandSpecs, bandPt, singleNamePct, narrativePct, cadence, data.liabilities, taxParamsYear, cmaParamsYear])
+
+  // Diversification context map — same targets/bands/rules as the digest, so the
+  // "beyond band" tag it shows can never disagree with the alert above (invariant #1).
+  const diversification = useMemo(
+    () =>
+      diversificationScan(
+        bs.byClass,
+        Object.entries(targets).map(([asset_class, pct]) => ({ asset_class, target_pct: pct / 100 })),
+        bandSpecs,
+        {
+          rebalance_band_pt: bandPt,
+          single_name_pct: singleNamePct / 100,
+          narrative_pct: narrativePct / 100,
+          tlh_min_loss: null,
+          cadence,
+        },
+      ),
+    [bs.byClass, targets, bandSpecs, bandPt, singleNamePct, narrativePct, cadence],
+  )
 
   const save = async () => {
     if (!session) return
@@ -167,6 +208,17 @@ export function RiskExposureTab() {
         ),
       ])
       if (tErr || rErr) throw tErr ?? rErr
+
+      // Per-class bands: replace the set wholesale (small, owner-scoped table) so
+      // clearing an override reverts that class to the global band.
+      const { error: dErr } = await supabase.from('rebalance_bands').delete().eq('user_id', uid)
+      if (dErr) throw dErr
+      const bandRows = bandSpecs.map((b) => ({ user_id: uid, asset_class: b.asset_class, abs_pts: b.abs_pts, rel_pct: b.rel_pct }))
+      if (bandRows.length) {
+        const { error: bErr } = await supabase.from('rebalance_bands').insert(bandRows)
+        if (bErr) throw bErr
+      }
+
       setSaveNote('Saved — your pre-committed thresholds are set.')
     } catch (e) {
       setSaveNote(e instanceof Error ? e.message : 'Save failed')
@@ -201,6 +253,8 @@ export function RiskExposureTab() {
             onDismiss={(a) => void dismiss(a)}
           />
 
+          <DiversificationPanel scan={diversification} />
+
           {/* Alert-engine config — your pre-committed thresholds */}
           <Panel label="Alert thresholds & targets">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -233,6 +287,26 @@ export function RiskExposureTab() {
                 </Field>
               ))}
             </div>
+
+            <MicroLabel className="mt-5 mb-2 text-faint">
+              Per-class rebalance bands — drift points; blank uses the {bandPt}-pt global
+            </MicroLabel>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {bs.byClass.map((s) => (
+                <Field key={s.class} label={s.class} hint="override (pts)">
+                  <Input
+                    type="number"
+                    value={classBands[s.class] ?? ''}
+                    placeholder={`${bandPt} (global)`}
+                    onChange={(e) => setClassBands((b) => ({ ...b, [s.class]: e.target.value }))}
+                  />
+                </Field>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-faint">
+              A tighter band on a volatile sleeve (say crypto) flags drift sooner; a wider one tolerates more
+              before nudging. The same bands feed the digest and the diversification map above (invariant #1).
+            </p>
 
             <div className="mt-5 flex items-center gap-3">
               <Button onClick={save} disabled={saving || !session}>
