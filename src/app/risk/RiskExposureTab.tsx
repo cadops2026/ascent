@@ -8,6 +8,8 @@ import type { AssetClass } from '../../lib/finance/networth'
 import { buildEtfMap, lookThrough } from '../../lib/finance/lookthrough'
 import type { EtfHoldingRow } from '../../lib/finance/lookthrough'
 import { runAllStress } from '../../lib/finance/drawdownstress'
+import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
+import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
 import { blastRadius, factorExposure, exposureNarrative } from '../../lib/finance/exposure'
 import { mortgageAsShortBond } from '../../lib/finance/mortgagebond'
 import { evaluateAlerts } from '../../lib/finance/alertengine'
@@ -28,7 +30,6 @@ const CLASS_TO_UNI: Record<AssetClass, string> = {
   Private: 'private_equity', Collectibles: 'collectibles', 'Real estate': 'real_estate',
 }
 
-interface UniBeta { class: string; corr_to_us_equity: number | null }
 interface TargetRow { asset_class: string; target_pct: number | null }
 interface BandRow { asset_class: string; abs_pts: number | null; rel_pct: number | null }
 interface RulesRow {
@@ -42,9 +43,10 @@ export function RiskExposureTab() {
   const { data, loading } = useBalanceSheet()
   const { session } = useAuth()
   const { storedYear: taxParamsYear } = useTaxParams()
-  const { storedYear: cmaParamsYear } = useCmaParams()
+  const { storedYear: cmaParamsYear, params: cmaOverride } = useCmaParams()
   const [etfRows, setEtfRows] = useState<EtfHoldingRow[]>([])
-  const [betas, setBetas] = useState<UniBeta[]>([])
+  const [uniRows, setUniRows] = useState<UniverseRow[]>([])
+  const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
 
   // Editable alert config (pre-committed thresholds). Loaded from DB, saved on demand.
   const [targets, setTargets] = useState<Record<string, number>>({}) // class -> target %
@@ -60,15 +62,17 @@ export function RiskExposureTab() {
 
   useEffect(() => {
     void (async () => {
-      const [etf, uni, tgt, band, rule] = await Promise.all([
+      const [etf, uni, cma, tgt, band, rule] = await Promise.all([
         supabase.from('etf_holdings').select('etf_symbol, holding_symbol, holding_name, weight'),
-        supabase.from('asset_class_universe').select('class, corr_to_us_equity'),
+        supabase.from('asset_class_universe').select('class, cma_premium, vol, corr_to_us_equity, cost_proxy'),
+        supabase.from('cma_sources').select('asset_class, house, value'),
         supabase.from('target_allocation').select('asset_class, target_pct'),
         supabase.from('rebalance_bands').select('asset_class, abs_pts, rel_pct'),
         supabase.from('alert_rules').select('rebalance_band_pt, single_name_pct, narrative_pct, cadence').maybeSingle(),
       ])
       setEtfRows((etf.data ?? []) as EtfHoldingRow[])
-      setBetas((uni.data ?? []) as UniBeta[])
+      setUniRows((uni.data ?? []) as UniverseRow[])
+      setCmaRows((cma.data ?? []) as CmaSourceRow[])
       const tRows = (tgt.data ?? []) as TargetRow[]
       if (tRows.length > 0) {
         const t: Record<string, number> = {}
@@ -113,13 +117,25 @@ export function RiskExposureTab() {
   }, [cfgLoaded, loading, bs.byClass])
 
   const betaByClass = useMemo(() => {
-    const uniMap = new Map(betas.map((b) => [b.class, b.corr_to_us_equity ?? 0]))
+    const uniMap = new Map(uniRows.map((b) => [b.class, b.corr_to_us_equity ?? 0]))
     const out: Partial<Record<AssetClass, number>> = {}
     for (const cls of Object.keys(CLASS_TO_UNI) as AssetClass[]) out[cls] = uniMap.get(CLASS_TO_UNI[cls]) ?? 0
     return out
-  }, [betas])
+  }, [uniRows])
 
-  const stress = useMemo(() => runAllStress(bs.byClass, bs.investable), [bs])
+  // Blended expected REAL return of the current mix — the rate the post-shock
+  // portfolio compounds back at (invariant #3: read the consensus-CMA engine).
+  const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
+  const blendedReturn = useMemo(() => {
+    let r = 0
+    for (const s of bs.byClass) {
+      const k = cma[CLASS_TO_UNI[s.class]]
+      if (k) r += s.pct * k.expectedReturn
+    }
+    return r
+  }, [bs.byClass, cma])
+
+  const stress = useMemo(() => runAllStress(bs.byClass, bs.investable, blendedReturn), [bs, blendedReturn])
   const worst = useMemo(() => {
     const w = stress.slice().sort((a, b) => b.lossPct - a.lossPct)[0]
     return w ? { name: w.scenario.name, lossPct: w.lossPct } : null
@@ -246,6 +262,7 @@ export function RiskExposureTab() {
             blast={br}
             factor={fx}
             stress={stress}
+            recoveryRate={blendedReturn}
             mortgageBonds={mortgageBonds}
             alerts={alerts}
             cadence={cadence}

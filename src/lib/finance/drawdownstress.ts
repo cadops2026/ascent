@@ -53,9 +53,24 @@ export interface StressResult {
   lossPct: number // of investable
   afterValue: number
   byClassLoss: { class: AssetClass; loss: number }[]
+  /** Years for the post-shock portfolio to compound back to its pre-shock value at
+   *  the blended expected REAL return. null when there's no positive return to grow
+   *  on (e.g. all-cash) or no loss. A band, not a forecast (invariant #4). */
+  yearsToRecover: number | null
 }
 
-export function runStress(byClass: ClassSlice[], investable: number, sc: StressScenario): StressResult {
+/** t such that (1+r)^t = baseline/afterValue, i.e. ln(1/(1−lossPct)) / ln(1+r). */
+function yearsToRecover(lossPct: number, expectedAnnualReturn: number): number | null {
+  if (!(expectedAnnualReturn > 0) || lossPct <= 0 || lossPct >= 1) return null
+  return Math.log(1 / (1 - lossPct)) / Math.log(1 + expectedAnnualReturn)
+}
+
+export function runStress(
+  byClass: ClassSlice[],
+  investable: number,
+  sc: StressScenario,
+  expectedAnnualReturn = 0,
+): StressResult {
   let lossAmount = 0
   const byClassLoss: { class: AssetClass; loss: number }[] = []
   for (const s of byClass) {
@@ -65,15 +80,21 @@ export function runStress(byClass: ClassSlice[], investable: number, sc: StressS
     lossAmount += loss
   }
   byClassLoss.sort((a, b) => b.loss - a.loss)
+  const lossPct = investable > 0 ? lossAmount / investable : 0
   return {
     scenario: sc,
     lossAmount,
-    lossPct: investable > 0 ? lossAmount / investable : 0,
+    lossPct,
     afterValue: Math.max(0, investable - lossAmount),
     byClassLoss,
+    yearsToRecover: yearsToRecover(lossPct, expectedAnnualReturn),
   }
 }
 
-export function runAllStress(byClass: ClassSlice[], investable: number): StressResult[] {
-  return STRESS_SCENARIOS.map((sc) => runStress(byClass, investable, sc))
+export function runAllStress(
+  byClass: ClassSlice[],
+  investable: number,
+  expectedAnnualReturn = 0,
+): StressResult[] {
+  return STRESS_SCENARIOS.map((sc) => runStress(byClass, investable, sc, expectedAnnualReturn))
 }

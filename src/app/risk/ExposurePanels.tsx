@@ -12,6 +12,8 @@ export interface ExposurePanelsProps {
   blast: BlastRadius
   factor: FactorExposure
   stress: StressResult[]
+  /** Blended expected real return used for the recovery estimate (for the footnote). */
+  recoveryRate: number
   mortgageBonds: MortgageBondView
   alerts: EvaluatedAlert[]
   cadence: string
@@ -29,6 +31,7 @@ export function ExposurePanels({
   blast,
   factor,
   stress,
+  recoveryRate,
   mortgageBonds,
   alerts,
   cadence,
@@ -102,14 +105,28 @@ export function ExposurePanels({
               <div className="mt-1.5 h-2 overflow-hidden rounded bg-panel-hi">
                 <div className="h-full bg-coral/70" style={{ width: `${(r.lossPct / maxLoss) * 100}%` }} />
               </div>
-              <div className="mt-1 text-xs text-faint">
-                {r.scenario.note} → investable ~{fmtMoneyCompact(r.afterValue)} after.
+              <div className="mt-1 flex items-baseline justify-between gap-3 text-xs">
+                <span className="text-faint">
+                  {r.scenario.note} → investable ~{fmtMoneyCompact(r.afterValue)} after.
+                </span>
+                <span className="tnum shrink-0 text-muted">
+                  {r.yearsToRecover != null ? (
+                    <>
+                      ~<span className="text-ink">{r.yearsToRecover.toFixed(1)} yrs</span> to recover
+                    </>
+                  ) : (
+                    <span className="text-faint">recovery n/a</span>
+                  )}
+                </span>
               </div>
             </li>
           ))}
         </ul>
         <p className="mt-4 text-xs text-faint">
-          The primary residence isn't stressed here — it's out of the investable math and its AVM is noisy (invariant #11).
+          Years to recover = time to compound back to the pre-shock value at your blended{' '}
+          <span className="text-muted">{fmtPct(recoveryRate)}</span> real return (contributions aside) — an
+          illustration, not a forecast. The primary residence isn't stressed here — it's out of the investable
+          math and its AVM is noisy (invariant #11).
         </p>
       </Panel>
 
