@@ -14,6 +14,7 @@ import { MacroContextCard } from './MacroContextCard'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
 import type { InflRow } from '../../lib/finance/inflation'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
+import { useAuth } from '../../auth/AuthProvider'
 
 const CLASS_MAP: Record<string, string> = {
   Equities: 'us_equity',
@@ -32,14 +33,17 @@ function ageFromDob(dob: string | null | undefined): number | null {
 
 export function ProjectionTab() {
   const { data, loading } = useBalanceSheet()
+  const { session } = useAuth()
   const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
   const [uniRows, setUniRows] = useState<UniverseRow[]>([])
   const [inflRows, setInflRows] = useState<InflRow[]>([])
 
   const [inited, setInited] = useState(false)
-  const [currentAge, setCurrentAge] = useState(45)
+  // Date of birth drives current age, which then auto-increases with time.
+  const [dob, setDob] = useState('')
+  const currentAge = ageFromDob(dob) ?? 45
   const [retireAge, setRetireAge] = useState(65)
-  const [planToAge, setPlanToAge] = useState(95)
+  const [planToAge, setPlanToAge] = useState(85)
   // Contribution schedule: back-to-back intervals of (years, $/month, today's $).
   const [contribSchedule, setContribSchedule] = useState<{ years: number; monthly: number }[]>([])
   const [withdrawal, setWithdrawal] = useState(0)
@@ -64,12 +68,18 @@ export function ProjectionTab() {
 
   useEffect(() => {
     if (inited || loading) return
-    setCurrentAge(ageFromDob(data.profile?.dob) ?? 45)
+    setDob(data.profile?.dob ?? '')
     setRetireAge(data.profile?.retire_age ?? 65)
-    setPlanToAge(data.profile?.plan_to_age ?? 95)
+    setPlanToAge(data.profile?.plan_to_age ?? 85)
     setWithdrawal(data.spending?.annual_amount ?? 0)
     setInited(true)
   }, [loading, data, inited])
+
+  // Persist DOB so current age is computed (and auto-increases) everywhere.
+  const saveDob = async (d: string) => {
+    setDob(d)
+    if (session?.user.id && d) await supabase.from('profiles').upsert({ user_id: session.user.id, dob: d })
+  }
 
   const { params: cmaOverride } = useCmaParams()
   const cma = useMemo(() => applyCmaOverride(buildCma(cmaRows, uniRows), cmaOverride), [cmaRows, uniRows, cmaOverride])
@@ -145,8 +155,8 @@ export function ProjectionTab() {
       {/* Editable assumptions (design principle #4) */}
       <Panel label="Assumptions">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Field label="Current age">
-            <Input type="number" value={currentAge} onChange={(e) => setCurrentAge(Number(e.target.value))} />
+          <Field label="Date of birth" hint={dob ? `age ${currentAge} · auto-updates` : 'sets your age'}>
+            <Input type="date" value={dob} onChange={(e) => void saveDob(e.target.value)} />
           </Field>
           <Field label="Retire age">
             <Input type="number" value={retireAge} onChange={(e) => setRetireAge(Number(e.target.value))} />

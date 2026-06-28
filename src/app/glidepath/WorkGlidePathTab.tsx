@@ -33,7 +33,7 @@ export function WorkGlidePathTab() {
 
   const [inited, setInited] = useState(false)
   const [currentAge, setCurrentAge] = useState(45)
-  const [planToAge, setPlanToAge] = useState(95)
+  const [planToAge, setPlanToAge] = useState(85)
   const [spending, setSpending] = useState(0)
   const [contribution, setContribution] = useState(0)
   const [confidence, setConfidence] = useState(85)
@@ -57,7 +57,7 @@ export function WorkGlidePathTab() {
   useEffect(() => {
     if (inited || loading) return
     setCurrentAge(ageFromDob(data.profile?.dob) ?? 45)
-    setPlanToAge(data.profile?.plan_to_age ?? 95)
+    setPlanToAge(data.profile?.plan_to_age ?? 85)
     setSpending(data.spending?.annual_amount ?? 0)
     setInited(true)
   }, [loading, data, inited])

@@ -91,7 +91,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
   // (the Projection tab is where you tune them) — matching Projection's defaults
   // keeps the headline number consistent across the two surfaces.
   const currentAge = ageFromDob(data.profile?.dob) ?? 45
-  const planToAge = data.profile?.plan_to_age ?? 95
+  const planToAge = data.profile?.plan_to_age ?? 85
   const retireAge = data.profile?.retire_age ?? 65
   const withdrawal = data.spending?.annual_amount ?? 0
 

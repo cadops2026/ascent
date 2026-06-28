@@ -30,7 +30,7 @@ export interface WithdrawalPlannerProps {
 
 export function WithdrawalPlanner(p: WithdrawalPlannerProps) {
   const [retireAge, setRetireAge] = useState(Math.max(p.currentAge, 65))
-  const [planToAge, setPlanToAge] = useState(95)
+  const [planToAge, setPlanToAge] = useState(85)
   const [confidence, setConfidence] = useState(85)
   const [spend, setSpend] = useState<number | null>(null) // null ⇒ use solved max
   const [otherIncome, setOtherIncome] = useState(0)
