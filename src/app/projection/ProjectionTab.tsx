@@ -40,8 +40,14 @@ export function ProjectionTab() {
   const [currentAge, setCurrentAge] = useState(45)
   const [retireAge, setRetireAge] = useState(65)
   const [planToAge, setPlanToAge] = useState(95)
-  const [contribution, setContribution] = useState(0)
+  // Contribution schedule: back-to-back intervals of (years, $/month, today's $).
+  const [contribSchedule, setContribSchedule] = useState<{ years: number; monthly: number }[]>([])
   const [withdrawal, setWithdrawal] = useState(0)
+
+  const addInterval = () => setContribSchedule((s) => [...s, { years: 5, monthly: 0 }])
+  const updateInterval = (i: number, patch: Partial<{ years: number; monthly: number }>) =>
+    setContribSchedule((s) => s.map((seg, j) => (j === i ? { ...seg, ...patch } : seg)))
+  const removeInterval = (i: number) => setContribSchedule((s) => s.filter((_, j) => j !== i))
 
   useEffect(() => {
     void (async () => {
@@ -94,16 +100,30 @@ export function ProjectionTab() {
 
   const mc = useMemo(() => {
     if (bs.investable <= 0 || uniRows.length === 0) return null
+    const retirementInYears = Math.max(0, retireAge - currentAge)
+    // Net real cash flow per year: scheduled monthly contributions (×12) less
+    // retirement spending once it begins. Intervals run back-to-back from now.
+    const cashFlow = (year: number): number => {
+      let acc = 0
+      let monthly = 0
+      for (const seg of contribSchedule) {
+        if (year > acc && year <= acc + seg.years) {
+          monthly = seg.monthly
+          break
+        }
+        acc += seg.years
+      }
+      const spend = year > retirementInYears ? withdrawal : 0
+      return monthly * 12 - spend
+    }
     return monteCarlo(cmaEff, infl, {
       initialWealth: bs.investable,
       weights,
-      retirementInYears: Math.max(0, retireAge - currentAge),
       horizonYears: Math.max(1, planToAge - currentAge),
-      annualContribution: contribution,
-      annualWithdrawal: withdrawal,
+      cashFlow,
       sims: SIMS,
     })
-  }, [cmaEff, infl, weights, bs.investable, retireAge, currentAge, planToAge, contribution, withdrawal, uniRows.length])
+  }, [cmaEff, infl, weights, bs.investable, retireAge, currentAge, planToAge, contribSchedule, withdrawal, uniRows.length])
 
   const chartData = useMemo(
     () =>
@@ -124,7 +144,7 @@ export function ProjectionTab() {
 
       {/* Editable assumptions (design principle #4) */}
       <Panel label="Assumptions">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Field label="Current age">
             <Input type="number" value={currentAge} onChange={(e) => setCurrentAge(Number(e.target.value))} />
           </Field>
@@ -134,9 +154,6 @@ export function ProjectionTab() {
           <Field label="Plan to age">
             <Input type="number" value={planToAge} onChange={(e) => setPlanToAge(Number(e.target.value))} />
           </Field>
-          <Field label="Contrib./yr" hint="today's $">
-            <Input type="number" value={contribution} onChange={(e) => setContribution(Number(e.target.value))} />
-          </Field>
           <Field label="Spend/yr" hint="in retirement">
             <Input type="number" value={withdrawal} onChange={(e) => setWithdrawal(Number(e.target.value))} />
           </Field>
@@ -144,6 +161,62 @@ export function ProjectionTab() {
         <p className="mt-3 text-xs text-faint">
           Returns from the consensus-CMA engine (Vanguard/JPM/Invesco/BlackRock/MS); inflation from the{' '}
           <span className="font-mono">{infl.source}</span> curve. Real (today's) dollars.
+        </p>
+      </Panel>
+
+      {/* Contribution schedule — back-to-back intervals of (years, $/month) */}
+      <Panel
+        label="Contributions"
+        right={
+          <button type="button" onClick={addInterval} className="micro-label text-teal hover:text-ink">
+            + Add interval
+          </button>
+        }
+      >
+        {contribSchedule.length === 0 ? (
+          <p className="py-2 text-sm text-faint">
+            No contributions yet. Add an interval to model monthly contributions over time — e.g. $5,000/mo for
+            3 years, then $3,000/mo for 2 years.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {contribSchedule.map((seg, i) => {
+              const startYear = contribSchedule.slice(0, i).reduce((a, s) => a + (s.years || 0), 0)
+              const fromAge = currentAge + startYear
+              const toAge = fromAge + (seg.years || 0)
+              return (
+                <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted">For</span>
+                  <Input
+                    type="number"
+                    value={seg.years}
+                    onChange={(e) => updateInterval(i, { years: Math.max(0, Number(e.target.value)) })}
+                    className="w-16 py-1.5! text-right"
+                  />
+                  <span className="text-muted">years, contribute $</span>
+                  <Input
+                    type="number"
+                    value={seg.monthly}
+                    onChange={(e) => updateInterval(i, { monthly: Math.max(0, Number(e.target.value)) })}
+                    className="w-28 py-1.5! text-right"
+                  />
+                  <span className="text-muted">/month</span>
+                  <span className="tnum text-xs text-faint">· age {fromAge}–{toAge}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeInterval(i)}
+                    className="micro-label ml-auto text-faint hover:text-coral"
+                  >
+                    Remove
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <p className="mt-3 text-xs text-faint">
+          Today&rsquo;s dollars. Intervals run back-to-back starting now. After the schedule ends, contributions
+          stop; retirement spending begins at the retire age above.
         </p>
       </Panel>
 
