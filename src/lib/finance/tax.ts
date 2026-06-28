@@ -1,4 +1,4 @@
-import type { Holding, Account, FilingStatus } from '../db'
+import type { Holding, Account, FilingStatus, TaxLot } from '../db'
 import { holdingValue } from './networth'
 import type { QuoteMap } from './networth'
 import { bracketAt, bracketsFor, marginalRate, irmaaTier, rmdDivisor, rmdStartAge } from './taxtables'
@@ -103,35 +103,151 @@ export function assetLocation(accounts: Account[], holdings: Holding[], quotes: 
   return flags
 }
 
-export interface TlhLot {
-  symbol: string
-  name: string
-  value: number
+// ── Lot-level harvesting ──────────────────────────────────────────────────────
+// A loss can be harvested lot by lot: a single position can hold underwater lots
+// even when the blended basis is in the green. Lots also let us flag wash-sale
+// RISK — buying substantially identical shares within 30 days of a loss sale
+// disallows the loss. We can't see future buys, but a same-security lot ACQUIRED
+// within the trailing 30 days means harvesting now would wash against it. This is
+// advisory (timing context for the CPA), never a filed determination (invariant #9).
+const WASH_WINDOW_DAYS = 30
+const LONG_TERM_DAYS = 365
+
+export type LotTerm = 'short' | 'long' | 'unknown'
+
+export interface HarvestLot {
+  acquiredOn: string | null
+  shares: number | null
   costBasis: number
-  unrealizedLoss: number
+  value: number
+  unrealizedLoss: number // costBasis − value (only losing lots are returned)
+  term: LotTerm // short- vs long-term holding (loss character)
+  washRisk: boolean // a same-security lot was acquired within the wash window
 }
 
-/** Holding-level harvest opportunities: taxable positions trading below basis. */
-export function tlhOpportunities(
+export interface HarvestPosition {
+  symbol: string
+  name: string
+  hasLots: boolean // false = no dated lots, evaluated at the blended holding basis
+  recentBuy: boolean // a lot acquired within the wash window → harvesting now risks a wash sale
+  losingLots: HarvestLot[]
+  harvestableLoss: number // losses clear of wash-sale risk
+  washBlockedLoss: number // losses currently exposed to a wash sale (wait out the window)
+}
+
+export interface LotHarvestResult {
+  positions: HarvestPosition[]
+  totalHarvestable: number
+  totalWashBlocked: number
+}
+
+/**
+ * Lot-aware tax-loss harvesting across taxable accounts. When a holding has dated
+ * lots, each lot is valued at the holding's current price-per-share; otherwise the
+ * holding is evaluated at its single blended basis (graceful fallback). Returns
+ * only positions with a harvestable loss, separating losses clear of wash-sale
+ * risk from those a recent buy exposes.
+ */
+export function tlhLotOpportunities(
   accounts: Account[],
   holdings: Holding[],
+  lots: TaxLot[],
   quotes: QuoteMap,
-  minLoss = 3_000,
-): { lots: TlhLot[]; totalLoss: number } {
+  asOf: Date = new Date(),
+  minLoss = 0,
+): LotHarvestResult {
   const acctBucket = new Map(accounts.map((a) => [a.id, bucketForTaxType(a.tax_type)]))
-  const lots: TlhLot[] = []
-  for (const h of holdings) {
-    const v = holdingValue(h, quotes)
-    if (v == null || v <= 0 || h.cost_basis == null) continue
-    const b = (h.account_id && acctBucket.get(h.account_id)) || 'taxable'
-    if (b !== 'taxable') continue // harvesting only helps in taxable accounts
-    const loss = h.cost_basis - v
-    if (loss >= minLoss) {
-      lots.push({ symbol: h.symbol ?? h.name ?? '—', name: h.name ?? h.symbol ?? '—', value: v, costBasis: h.cost_basis, unrealizedLoss: loss })
-    }
+  const lotsByHolding = new Map<string, TaxLot[]>()
+  for (const l of lots) {
+    const list = lotsByHolding.get(l.holding_id) ?? []
+    list.push(l)
+    lotsByHolding.set(l.holding_id, list)
   }
-  lots.sort((a, b) => b.unrealizedLoss - a.unrealizedLoss)
-  return { lots, totalLoss: lots.reduce((s, l) => s + l.unrealizedLoss, 0) }
+
+  const dayMs = 86_400_000
+  const termFor = (acq: string | null): LotTerm => {
+    if (!acq) return 'unknown'
+    const days = (asOf.getTime() - new Date(acq).getTime()) / dayMs
+    return days >= LONG_TERM_DAYS ? 'long' : 'short'
+  }
+  const isRecent = (acq: string | null): boolean => {
+    if (!acq) return false
+    const days = (asOf.getTime() - new Date(acq).getTime()) / dayMs
+    return days >= 0 && days <= WASH_WINDOW_DAYS
+  }
+
+  const positions: HarvestPosition[] = []
+  for (const h of holdings) {
+    const value = holdingValue(h, quotes)
+    if (value == null || value <= 0) continue
+    const bucket = (h.account_id && acctBucket.get(h.account_id)) || 'taxable'
+    if (bucket !== 'taxable') continue // harvesting only helps in taxable accounts
+
+    const hLots = lotsByHolding.get(h.id) ?? []
+    const pps = h.shares != null && h.shares > 0 ? value / h.shares : null
+
+    let evaluated: HarvestLot[] = []
+    let hasLots = false
+    let recentBuy = false
+
+    if (hLots.length > 0 && pps != null) {
+      hasLots = true
+      recentBuy = hLots.some((l) => isRecent(l.acquired_on))
+      evaluated = hLots.map((l) => {
+        const lotValue = l.shares * pps
+        return {
+          acquiredOn: l.acquired_on,
+          shares: l.shares,
+          costBasis: l.cost_basis,
+          value: lotValue,
+          unrealizedLoss: l.cost_basis - lotValue,
+          term: termFor(l.acquired_on),
+          washRisk: false, // set below at the position level
+        }
+      })
+    } else if (h.cost_basis != null) {
+      // No usable lots — evaluate the whole holding at its blended basis.
+      evaluated = [
+        {
+          acquiredOn: null,
+          shares: h.shares ?? null,
+          costBasis: h.cost_basis,
+          value,
+          unrealizedLoss: h.cost_basis - value,
+          term: 'unknown',
+          washRisk: false,
+        },
+      ]
+    } else {
+      continue // no basis anywhere → nothing to harvest
+    }
+
+    const losingLots = evaluated
+      .filter((l) => l.unrealizedLoss > 0)
+      .map((l) => ({ ...l, washRisk: recentBuy }))
+      .sort((a, b) => b.unrealizedLoss - a.unrealizedLoss)
+    if (losingLots.length === 0) continue
+
+    const totalLoss = losingLots.reduce((s, l) => s + l.unrealizedLoss, 0)
+    if (totalLoss < minLoss) continue
+
+    positions.push({
+      symbol: h.symbol ?? h.name ?? '—',
+      name: h.name ?? h.symbol ?? '—',
+      hasLots,
+      recentBuy,
+      losingLots,
+      harvestableLoss: recentBuy ? 0 : totalLoss,
+      washBlockedLoss: recentBuy ? totalLoss : 0,
+    })
+  }
+
+  positions.sort((a, b) => b.harvestableLoss - a.harvestableLoss || b.washBlockedLoss - a.washBlockedLoss)
+  return {
+    positions,
+    totalHarvestable: positions.reduce((s, p) => s + p.harvestableLoss, 0),
+    totalWashBlocked: positions.reduce((s, p) => s + p.washBlockedLoss, 0),
+  }
 }
 
 export interface RmdView {

@@ -1,16 +1,18 @@
 import { Panel, Figure, MicroLabel } from '../../components/ui'
 import { fmtMoneyCompact, fmtPct } from '../../lib/format'
 import { BUCKET_LABEL } from '../../lib/finance/tax'
-import type { BucketSlice, SequenceStep, LocationFlag, RmdView, TlhLot, CoordinatePrompt } from '../../lib/finance/tax'
+import type { BucketSlice, SequenceStep, LocationFlag, RmdView, LotHarvestResult, CoordinatePrompt } from '../../lib/finance/tax'
 
 export interface TaxPanelsProps {
   buckets: { slices: BucketSlice[]; total: number }
   sequence: SequenceStep[]
   location: LocationFlag[]
   rmd: RmdView
-  tlh: { lots: TlhLot[]; totalLoss: number }
+  tlh: LotHarvestResult
   prompts: CoordinatePrompt[]
 }
+
+const TERM_LABEL: Record<'short' | 'long' | 'unknown', string> = { short: 'ST', long: 'LT', unknown: '' }
 
 const BUCKET_COLOR: Record<string, string> = {
   taxable: 'bg-amber', tax_deferred: 'bg-indigo', tax_free: 'bg-teal', hsa: 'bg-teal/60', other: 'bg-faint',
@@ -105,27 +107,59 @@ export function TaxPanels({ buckets, sequence, location, rmd, tlh, prompts }: Ta
         </p>
       </Panel>
 
-      {/* Tax-loss harvesting */}
+      {/* Tax-loss harvesting — lot-aware */}
       <Panel
         label="Tax-loss harvesting"
-        right={tlh.lots.length > 0 ? <MicroLabel className="text-teal">{fmtMoneyCompact(tlh.totalLoss)} harvestable</MicroLabel> : undefined}
+        right={
+          tlh.totalHarvestable > 0 ? (
+            <MicroLabel className="text-teal">{fmtMoneyCompact(tlh.totalHarvestable)} harvestable</MicroLabel>
+          ) : undefined
+        }
       >
-        {tlh.lots.length === 0 ? (
+        {tlh.positions.length === 0 ? (
           <p className="py-2 text-sm text-faint">No taxable positions are trading below cost basis right now.</p>
         ) : (
-          <ul className="space-y-1.5">
-            {tlh.lots.map((l) => (
-              <li key={l.symbol} className="flex items-center gap-3 border-b border-line py-2 last:border-0 text-sm">
-                <span className="flex-1 text-ink">{l.name}</span>
-                <span className="tnum font-mono text-xs text-faint">basis {fmtMoneyCompact(l.costBasis)}</span>
-                <span className="tnum w-20 text-right font-mono text-coral">−{fmtMoneyCompact(l.unrealizedLoss)}</span>
+          <ul className="space-y-2.5">
+            {tlh.positions.map((p) => (
+              <li key={p.symbol} className="border-b border-line pb-2.5 last:border-0">
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-ink">
+                    {p.name}
+                    {p.recentBuy && (
+                      <span className="ml-2 micro-label rounded bg-amber/15 px-1.5 py-0.5 text-[0.6rem] text-amber">wash-sale risk</span>
+                    )}
+                  </span>
+                  <span className={`tnum font-mono ${p.recentBuy ? 'text-amber' : 'text-coral'}`}>
+                    −{fmtMoneyCompact(p.recentBuy ? p.washBlockedLoss : p.harvestableLoss)}
+                  </span>
+                </div>
+                {p.hasLots && (
+                  <ul className="mt-1 space-y-0.5">
+                    {p.losingLots.map((l, i) => (
+                      <li key={i} className="flex items-center gap-2 pl-3 text-xs text-faint">
+                        <span className="tnum w-14 font-mono">{l.shares}sh</span>
+                        {l.term !== 'unknown' && <span className="micro-label text-[0.6rem]">{TERM_LABEL[l.term]}</span>}
+                        {l.acquiredOn && <span className="text-faint/70">{l.acquiredOn}</span>}
+                        <span className="tnum ml-auto font-mono text-coral">−{fmtMoneyCompact(l.unrealizedLoss)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!p.hasLots && <div className="mt-0.5 pl-3 text-xs text-faint/70">blended basis — add lots below for lot-level detail</div>}
               </li>
             ))}
           </ul>
         )}
+        {tlh.totalWashBlocked > 0 && (
+          <p className="mt-3 text-xs text-amber">
+            {fmtMoneyCompact(tlh.totalWashBlocked)} of losses sit behind a purchase in the last 30 days — harvesting now
+            would wash the loss. Waiting out the window (or selling a non-replacement lot) preserves it.
+          </p>
+        )}
         <p className="mt-3 text-xs text-faint">
-          Harvesting realizes losses to offset gains (and up to $3k of income). Mind the <span className="text-ink">wash-sale</span> rule
-          — don't rebuy a substantially identical security within 30 days. Holding-level view; lot-level needs dated lots.
+          Harvesting realizes losses to offset gains (and up to $3k of income). The <span className="text-ink">wash-sale</span> rule
+          disallows a loss if you rebuy a substantially identical security within 30 days. Lots sharpen this; without them a
+          position is read at its blended basis. Advisory — confirm lots and timing with your CPA before selling (#9).
         </p>
       </Panel>
 

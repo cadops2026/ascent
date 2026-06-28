@@ -15,6 +15,7 @@ export type QuoteCache = Row<'quote_cache'>
 export type StatementImport = Row<'statement_imports'>
 export type InsurancePolicy = Row<'insurance_policies'>
 export type EstateDoc = Row<'estate_docs'>
+export type TaxLot = Row<'tax_lots'>
 
 /* Shape of one extracted candidate row in statement_imports.candidates (jsonb). */
 export interface HoldingCandidate {

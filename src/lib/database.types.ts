@@ -706,6 +706,44 @@ export type Database = {
         }
         Relationships: []
       }
+      tax_lots: {
+        Row: {
+          acquired_on: string | null
+          cost_basis: number
+          created_at: string
+          holding_id: string
+          id: string
+          shares: number
+          user_id: string
+        }
+        Insert: {
+          acquired_on?: string | null
+          cost_basis: number
+          created_at?: string
+          holding_id: string
+          id?: string
+          shares: number
+          user_id: string
+        }
+        Update: {
+          acquired_on?: string | null
+          cost_basis?: number
+          created_at?: string
+          holding_id?: string
+          id?: string
+          shares?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'tax_lots_holding_id_fkey'
+            columns: ['holding_id']
+            isOneToOne: false
+            referencedRelation: 'holdings'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       tax_parameters: {
         Row: {
           params: Json

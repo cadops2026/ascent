@@ -12,6 +12,7 @@ const USER_TABLES = [
   'profiles', 'accounts', 'holdings', 'real_estate', 'liabilities', 'spending_baseline',
   'target_allocation', 'rebalance_bands', 'scenarios', 'phase_plan', 'alert_rules', 'alerts',
   'net_worth_snapshots', 'insurance_policies', 'estate_docs', 'statement_imports',
+  'tax_lots', 'tax_parameters', 'cma_params',
 ] as const satisfies readonly TableName[]
 
 const STATEMENTS_BUCKET = 'statements'

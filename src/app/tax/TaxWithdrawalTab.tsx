@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Panel, Figure, Field, Input, Select, MicroLabel } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
 import { fmtMoneyCompact, fmtPct } from '../../lib/format'
 import { computeBalanceSheet, holdingValue } from '../../lib/finance/networth'
 import {
-  taxBuckets, withdrawalSequence, assetLocation, tlhOpportunities, rmdProjection,
+  taxBuckets, withdrawalSequence, assetLocation, tlhLotOpportunities, rmdProjection,
   rothConversion, coordinatePrompts, bucketForTaxType,
 } from '../../lib/finance/tax'
 import { buildCma, applyCmaOverride } from '../../lib/finance/cma'
@@ -14,11 +14,13 @@ import { buildInflationCurve } from '../../lib/finance/inflation'
 import type { CmaSourceRow, UniverseRow } from '../../lib/finance/cma'
 import type { InflRow } from '../../lib/finance/inflation'
 import { FILING_STATUSES, FILING_LABEL } from '../../lib/db'
-import type { FilingStatus } from '../../lib/db'
+import type { FilingStatus, TaxLot } from '../../lib/db'
 import { TaxPanels } from './TaxPanels'
+import { TaxLotsEditor } from './TaxLotsEditor'
 import { WithdrawalPlanner } from './WithdrawalPlanner'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { useTaxParams } from '../../lib/useTaxParams'
+import { useAuth } from '../../auth/AuthProvider'
 
 const CLASS_MAP: Record<string, string> = {
   Equities: 'us_equity', Crypto: 'crypto', Cash: 'cash',
@@ -27,10 +29,12 @@ const CLASS_MAP: Record<string, string> = {
 
 export function TaxWithdrawalTab() {
   const { data, loading } = useBalanceSheet()
+  const { session } = useAuth()
   const { params: taxParams } = useTaxParams()
   const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
   const [uniRows, setUniRows] = useState<UniverseRow[]>([])
   const [inflRows, setInflRows] = useState<InflRow[]>([])
+  const [lots, setLots] = useState<TaxLot[]>([])
 
   useEffect(() => {
     void (async () => {
@@ -45,10 +49,21 @@ export function TaxWithdrawalTab() {
     })()
   }, [])
 
+  // Tax lots are optional (the table may not be migrated yet) — degrade silently to
+  // the blended holding basis, which the harvest engine handles as a fallback.
+  const loadLots = useCallback(async () => {
+    const { data: rows, error } = await supabase.from('tax_lots').select('*')
+    if (!error) setLots((rows ?? []) as TaxLot[])
+  }, [])
+  useEffect(() => { void loadLots() }, [loadLots])
+
   const buckets = useMemo(() => taxBuckets(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
   const sequence = useMemo(() => withdrawalSequence(buckets.byBucket), [buckets.byBucket])
   const location = useMemo(() => assetLocation(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
-  const tlh = useMemo(() => tlhOpportunities(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
+  const tlh = useMemo(
+    () => tlhLotOpportunities(data.accounts, data.holdings, lots, data.quotes),
+    [data.accounts, data.holdings, lots, data.quotes],
+  )
   const rmd = useMemo(() => rmdProjection(buckets.byBucket.tax_deferred, data.profile?.dob, taxParams), [buckets.byBucket.tax_deferred, data.profile?.dob, taxParams])
 
   const prompts = useMemo(() => {
@@ -119,6 +134,15 @@ export function TaxWithdrawalTab() {
       ) : (
         <>
           <TaxPanels buckets={buckets} sequence={sequence} location={location} rmd={rmd} tlh={tlh} prompts={prompts} />
+
+          <TaxLotsEditor
+            accounts={data.accounts}
+            holdings={data.holdings}
+            quotes={data.quotes}
+            lots={lots}
+            userId={session?.user.id}
+            onChanged={loadLots}
+          />
 
           <WithdrawalPlanner
             cma={cma}
