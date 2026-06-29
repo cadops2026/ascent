@@ -1,0 +1,39 @@
+name: keepalive
+
+# Free Supabase projects pause after ~7 days of inactivity (data is kept; you'd
+# just have to click "Resume"). This pings an Edge Function every 6 hours so the
+# project never goes idle — at no cost. It's a no-op request (empty symbol list),
+# so it touches no data and needs no API keys beyond the public anon key.
+#
+# One-time setup: in the repo, Settings → Secrets and variables → Actions, add two
+# repository secrets:
+#   SUPABASE_URL        e.g. https://rhpdjuigivbwfvzoljsa.supabase.co
+#   SUPABASE_ANON_KEY   your project's anon/public key (gated by RLS, safe to store)
+
+on:
+  schedule:
+    - cron: '23 */6 * * *' # every 6 hours
+  workflow_dispatch: {} # also runnable on demand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase to prevent free-tier pause
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Set the SUPABASE_URL and SUPABASE_ANON_KEY repository secrets."; exit 1
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${SUPABASE_URL}/functions/v1/refresh-quotes" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            --data '{"symbols":[]}')
+          echo "keepalive ping -> HTTP $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "Unexpected status (project may be paused or secrets wrong)."; exit 1
+          fi
