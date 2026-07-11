@@ -16,14 +16,6 @@ import type { InflRow } from '../../lib/finance/inflation'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { useAuth } from '../../auth/AuthProvider'
 
-const CLASS_MAP: Record<string, string> = {
-  Equities: 'us_equity',
-  Crypto: 'crypto',
-  Cash: 'cash',
-  Private: 'private_equity',
-  Collectibles: 'collectibles',
-  'Real estate': 'real_estate',
-}
 const SIMS = 3000
 
 function ageFromDob(dob: string | null | undefined): number | null {
@@ -94,14 +86,7 @@ export function ProjectionTab() {
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data],
   )
-  const weights = useMemo(() => {
-    const w: Record<string, number> = {}
-    for (const s of bs.byClass) {
-      const k = CLASS_MAP[s.class]
-      if (k) w[k] = (w[k] ?? 0) + s.value
-    }
-    return w
-  }, [bs])
+  const weights = bs.cmaWeights
   // Settings global real-growth override → re-center the blend; else per-class CMA.
   const cmaEff = useMemo(
     () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
@@ -137,12 +122,12 @@ export function ProjectionTab() {
 
   const chartData = useMemo(
     () =>
-      mc?.bands.map((b) => ({ age: currentAge + b.year, lo: b.p10, span: b.p90 - b.p10, p50: b.p50 })) ?? [],
+      mc?.bands.map((b) => ({ age: currentAge + b.year, lo: b.p10, span: b.p90 - b.p10, p50: b.p50, p01: b.p01 })) ?? [],
     [mc, currentAge],
   )
 
   const accent = !mc ? 'ink' : mc.successProbability >= 0.8 ? 'teal' : mc.successProbability >= 0.6 ? 'amber' : 'coral'
-  const allocClasses = bs.byClass.map((s) => CLASS_MAP[s.class]).filter((c): c is string => !!c)
+  const allocClasses = Object.keys(bs.cmaWeights)
   const macro = useMemo(
     () => macroContext(cmaEff, weights, infl, Math.max(1, planToAge - currentAge)),
     [cmaEff, weights, infl, planToAge, currentAge],
@@ -262,13 +247,19 @@ export function ProjectionTab() {
           </Panel>
 
           {/* Percentile-band wealth path */}
-          <Panel label="Wealth path — real dollars, P10–P90 band">
+          <Panel label="Wealth path — real dollars, P10–P90 band + 1-in-100 floor">
             <WealthPathChart data={chartData} />
+            <p className="mt-3 text-xs text-faint">
+              Dashed <span className="text-coral">coral</span> line = the 1-in-100 (P1) deep-tail floor, where the
+              fat-tailed years (Student-t, invariant&nbsp;#12) show up. The P10–P90 body understates tail risk by
+              design — a unit-variance fat tail is tighter in the middle and heavier in the extremes.
+            </p>
           </Panel>
 
-          {/* Scenario terminals */}
-          <div className="grid gap-5 sm:grid-cols-3">
-            <Scenario label="Bear (P10)" value={mc.terminal.p10} accent="coral" />
+          {/* Scenario terminals — incl. the deep-tail worst case */}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <Scenario label="1-in-100 (P1)" value={mc.terminal.p01} accent="coral" />
+            <Scenario label="Bear (P10)" value={mc.terminal.p10} accent="amber" />
             <Scenario label="Base (median)" value={mc.terminal.p50} accent="teal" />
             <Scenario label="Bull (P90)" value={mc.terminal.p90} accent="indigo" />
           </div>
@@ -305,7 +296,7 @@ export function ProjectionTab() {
   )
 }
 
-function Scenario({ label, value, accent }: { label: string; value: number; accent: 'coral' | 'teal' | 'indigo' }) {
+function Scenario({ label, value, accent }: { label: string; value: number; accent: 'coral' | 'amber' | 'teal' | 'indigo' }) {
   return (
     <Panel>
       <Figure label={label} value={value} format="moneyCompact" accent={accent} size="md" />

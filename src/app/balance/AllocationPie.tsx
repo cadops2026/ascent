@@ -5,8 +5,10 @@ import type { ClassSlice, AssetClass } from '../../lib/finance/networth'
 
 const CLASS_COLOR: Record<AssetClass, string> = {
   Equities: 'var(--color-teal)',
+  Bonds: '#5E8BC4',
   Crypto: 'var(--color-amber)',
   'Real estate': 'var(--color-indigo)',
+  Commodities: '#B98A3C',
   Private: '#6FB1A0',
   Cash: 'var(--color-muted)',
   Collectibles: 'var(--color-coral)',

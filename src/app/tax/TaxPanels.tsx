@@ -2,9 +2,11 @@ import { Panel, Figure, MicroLabel } from '../../components/ui'
 import { fmtMoneyCompact, fmtPct } from '../../lib/format'
 import { BUCKET_LABEL } from '../../lib/finance/tax'
 import type { BucketSlice, SequenceStep, LocationFlag, RmdView, LotHarvestResult, CoordinatePrompt } from '../../lib/finance/tax'
+import type { TaxAdvantagedReview } from '../../lib/finance/taxadvantaged'
 
 export interface TaxPanelsProps {
   buckets: { slices: BucketSlice[]; total: number }
+  advantaged: TaxAdvantagedReview
   sequence: SequenceStep[]
   location: LocationFlag[]
   rmd: RmdView
@@ -23,9 +25,40 @@ const BUCKET_COLOR: Record<string, string> = {
  * withdrawal sequence, asset location, RMDs, harvest opportunities, CPA prompts.
  * Model + flag + coordinate — never files a return or gives individualized advice (#9).
  */
-export function TaxPanels({ buckets, sequence, location, rmd, tlh, prompts }: TaxPanelsProps) {
+export function TaxPanels({ buckets, advantaged, sequence, location, rmd, tlh, prompts }: TaxPanelsProps) {
   return (
     <>
+      {/* Tax-advantaged space — the high earner's #1 lever */}
+      <Panel label="Tax-advantaged space — fill every sheltered dollar">
+        <ul className="space-y-1.5">
+          {advantaged.vehicles.map((v) => (
+            <li key={v.key} className="flex items-center gap-3 text-sm">
+              <span className={`micro-label w-10 shrink-0 ${v.present ? 'text-teal' : 'text-faint'}`}>
+                {v.present ? 'have' : 'add'}
+              </span>
+              <span className="flex-1 text-muted">{v.label}</span>
+              <span className="tnum font-mono text-ink">{fmtMoneyCompact(v.limit)}</span>
+              <span className="w-44 text-right text-xs text-faint">{v.note}</span>
+            </li>
+          ))}
+        </ul>
+        <ul className="mt-4 space-y-3 border-t border-line pt-4">
+          {advantaged.opportunities.map((o, i) => (
+            <li key={i} className="flex gap-3">
+              <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${o.tone === 'watch' ? 'bg-amber' : 'bg-teal'}`} />
+              <div>
+                <div className="text-sm font-medium text-ink">{o.title}</div>
+                <div className="text-xs leading-relaxed text-muted">{o.text}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs text-faint">
+          Coverage + opportunities, with this year&rsquo;s limits — not a contributed-so-far gauge (the app holds
+          balances, not contributions). &ldquo;have/add&rdquo; reflects which account types you&rsquo;ve tagged.
+        </p>
+      </Panel>
+
       {/* Accounts by tax treatment */}
       <Panel label="Accounts by tax treatment">
         <div className="mb-4 flex h-3 overflow-hidden rounded">

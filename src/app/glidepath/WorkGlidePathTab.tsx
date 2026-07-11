@@ -14,10 +14,6 @@ import type { InflRow } from '../../lib/finance/inflation'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { PhaseBar } from './PhaseBar'
 
-const CLASS_MAP: Record<string, string> = {
-  Equities: 'us_equity', Crypto: 'crypto', Cash: 'cash',
-  Private: 'private_equity', Collectibles: 'collectibles', 'Real estate': 'real_estate',
-}
 const MEDICARE_AGE = 65
 
 function ageFromDob(dob: string | null | undefined): number | null {
@@ -74,14 +70,7 @@ export function WorkGlidePathTab() {
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data],
   )
-  const weights = useMemo(() => {
-    const w: Record<string, number> = {}
-    for (const s of bs.byClass) {
-      const k = CLASS_MAP[s.class]
-      if (k) w[k] = (w[k] ?? 0) + s.value
-    }
-    return w
-  }, [bs])
+  const weights = bs.cmaWeights
   const cmaEff = useMemo(
     () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
     [cma, weights, growthOverride],

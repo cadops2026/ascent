@@ -5,6 +5,7 @@ import { PageHeader } from '../tabs/PhasePlaceholder'
 import { fmtPct } from '../../lib/format'
 import { computeBalanceSheet } from '../../lib/finance/networth'
 import type { AssetClass } from '../../lib/finance/networth'
+import { CMA_KEY_FOR_COARSE } from '../../lib/finance/assetclass'
 import { buildEtfMap, lookThrough } from '../../lib/finance/lookthrough'
 import type { EtfHoldingRow } from '../../lib/finance/lookthrough'
 import { runAllStress } from '../../lib/finance/drawdownstress'
@@ -23,12 +24,6 @@ import { useTaxParams } from '../../lib/useTaxParams'
 import { useCmaParams } from '../../lib/useCmaParams'
 import { useAlerts } from '../../lib/useAlerts'
 import { useAuth } from '../../auth/AuthProvider'
-
-/** AssetClass → asset_class_universe key (corr_to_us_equity lives there, invariant #3). */
-const CLASS_TO_UNI: Record<AssetClass, string> = {
-  Equities: 'us_equity', Crypto: 'crypto', Cash: 'cash',
-  Private: 'private_equity', Collectibles: 'collectibles', 'Real estate': 'real_estate',
-}
 
 interface TargetRow { asset_class: string; target_pct: number | null }
 interface BandRow { asset_class: string; abs_pts: number | null; rel_pct: number | null }
@@ -119,7 +114,7 @@ export function RiskExposureTab() {
   const betaByClass = useMemo(() => {
     const uniMap = new Map(uniRows.map((b) => [b.class, b.corr_to_us_equity ?? 0]))
     const out: Partial<Record<AssetClass, number>> = {}
-    for (const cls of Object.keys(CLASS_TO_UNI) as AssetClass[]) out[cls] = uniMap.get(CLASS_TO_UNI[cls]) ?? 0
+    for (const cls of Object.keys(CMA_KEY_FOR_COARSE) as AssetClass[]) out[cls] = uniMap.get(CMA_KEY_FOR_COARSE[cls]) ?? 0
     return out
   }, [uniRows])
 
@@ -129,7 +124,7 @@ export function RiskExposureTab() {
   const blendedReturn = useMemo(() => {
     let r = 0
     for (const s of bs.byClass) {
-      const k = cma[CLASS_TO_UNI[s.class]]
+      const k = cma[CMA_KEY_FOR_COARSE[s.class]]
       if (k) r += s.pct * k.expectedReturn
     }
     return r

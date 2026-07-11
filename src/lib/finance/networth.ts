@@ -1,20 +1,15 @@
 import type { Holding, RealEstate, Liability, BasketLeg } from '../db'
 import { amortize } from './amortization'
+import { cmaClassForHolding, COARSE_OF_CMA } from './assetclass'
+import type { AssetClass, CmaClass } from './assetclass'
 
 /** symbol (UPPERCASE) -> price */
 export type QuoteMap = Record<string, number>
 
-/** Allocation classes for the investable pie. */
-export type AssetClass = 'Equities' | 'Crypto' | 'Cash' | 'Private' | 'Collectibles' | 'Real estate'
-
-const KIND_TO_CLASS: Record<string, AssetClass> = {
-  stock: 'Equities',
-  etf: 'Equities',
-  crypto: 'Crypto',
-  cash: 'Cash',
-  private: 'Private',
-  collectible: 'Collectibles',
-}
+// Asset-class taxonomy (coarse AssetClass + fine CmaClass + the per-holding
+// classifier) is the one source of truth in ./assetclass (invariant #1); re-export
+// AssetClass/CmaClass so existing importers of './networth' keep working.
+export type { AssetClass, CmaClass }
 
 /**
  * Market value of one holding, or null if it's a shares-based holding whose
@@ -67,6 +62,11 @@ export interface BalanceSheet {
   investable: number
   residenceValue: number
   byClass: ClassSlice[]
+  /** Investable value by fine engine (CMA) class — the weights the projection,
+   *  Monte Carlo and CMA engines consume (bonds/TIPS/intl/commodities now reach
+   *  their own class instead of collapsing into us_equity). Raw dollars; the
+   *  Monte Carlo normalizes. */
+  cmaWeights: Record<string, number>
   /** Count of shares-based holdings still waiting on a quote. */
   pendingQuotes: number
 }
@@ -79,6 +79,7 @@ export function computeBalanceSheet(
   asOf: Date = new Date(),
 ): BalanceSheet {
   const classTotals = new Map<AssetClass, number>()
+  const cmaTotals = new Map<CmaClass, number>()
   let holdingsTotal = 0
   let pendingQuotes = 0
 
@@ -89,8 +90,10 @@ export function computeBalanceSheet(
       continue
     }
     holdingsTotal += v
-    const cls = KIND_TO_CLASS[h.kind] ?? 'Equities'
-    classTotals.set(cls, (classTotals.get(cls) ?? 0) + v)
+    const cc = cmaClassForHolding(h)
+    cmaTotals.set(cc, (cmaTotals.get(cc) ?? 0) + v)
+    const coarse = COARSE_OF_CMA[cc]
+    classTotals.set(coarse, (classTotals.get(coarse) ?? 0) + v)
   }
 
   let residenceValue = 0
@@ -101,6 +104,7 @@ export function computeBalanceSheet(
   }
   if (investmentRE > 0) {
     classTotals.set('Real estate', (classTotals.get('Real estate') ?? 0) + investmentRE)
+    cmaTotals.set('real_estate', (cmaTotals.get('real_estate') ?? 0) + investmentRE)
   }
 
   const totalLiabilities = liabilities.reduce((sum, l) => sum + liabilityBalance(l, asOf), 0)
@@ -114,6 +118,9 @@ export function computeBalanceSheet(
     .map(([cls, value]) => ({ class: cls, value, pct: investable > 0 ? value / investable : 0 }))
     .sort((a, b) => b.value - a.value)
 
+  const cmaWeights: Record<string, number> = {}
+  for (const [cls, value] of cmaTotals) cmaWeights[cls] = value
+
   return {
     totalAssets,
     totalLiabilities,
@@ -121,6 +128,7 @@ export function computeBalanceSheet(
     investable,
     residenceValue,
     byClass,
+    cmaWeights,
     pendingQuotes,
   }
 }

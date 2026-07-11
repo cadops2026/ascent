@@ -32,8 +32,27 @@ export interface TaxParams {
   rmdDivisor: Record<number, number> // age → Uniform Lifetime divisor
   niitRate: number
   niitThreshold: Record<FilingStatus, number>
+  /** Alternative Minimum Tax (parallel system). exemption + phaseout start per
+   *  filing; the 26%/28% breakpoint; phaseout 25¢/$ over the start. */
+  amt: {
+    exemption: Record<FilingStatus, number>
+    phaseoutStart: Record<FilingStatus, number>
+    rate28Threshold: number // AMTI above this taxed at 28% (else 26%); halved for mfs
+  }
   estateExemption: Record<FilingStatus, number>
   estateTopRate: number
+  /** Annual tax-advantaged contribution limits (the maximizer reference). */
+  contributionLimits: {
+    electiveDeferral: number // 401(k)/403(b) employee deferral
+    catchUp50: number // additional, age 50+
+    total415c: number // DC-plan annual additions (employee + employer + after-tax)
+    govt457: number // governmental 457(b) deferral — STACKS on the 401(k)/403(b)
+    ira: number // traditional/Roth IRA
+    iraCatchUp: number // additional, age 50+
+    hsaSelf: number
+    hsaFamily: number
+    hsaCatchUp55: number
+  }
 }
 
 // Verified against IRS Rev. Proc. 2025-32 (tax-year-2026 inflation adjustments,
@@ -81,8 +100,26 @@ export const DEFAULT_TAX_PARAMS: TaxParams = {
   },
   niitRate: 0.038,
   niitThreshold: { single: 200_000, hoh: 200_000, mfs: 125_000, mfj: 250_000, qw: 250_000 },
+  // AMT 2026 estimates (Rev. Proc. 2025-32); re-verify each fall.
+  amt: {
+    exemption: { single: 90_100, hoh: 90_100, mfs: 70_100, mfj: 140_200, qw: 140_200 },
+    phaseoutStart: { single: 639_300, hoh: 639_300, mfs: 639_300, mfj: 1_278_575, qw: 1_278_575 },
+    rate28Threshold: 244_500,
+  },
   estateExemption: { single: 15_000_000, mfs: 15_000_000, mfj: 30_000_000, qw: 15_000_000, hoh: 15_000_000 },
   estateTopRate: 0.4,
+  // 2026 estimates (post-SECURE 2.0); re-verify against the IRS notice each fall.
+  contributionLimits: {
+    electiveDeferral: 24_500,
+    catchUp50: 8_000,
+    total415c: 72_000,
+    govt457: 24_500,
+    ira: 7_500,
+    iraCatchUp: 1_100,
+    hsaSelf: 4_400,
+    hsaFamily: 8_750,
+    hsaCatchUp55: 1_000,
+  },
 }
 
 // ── JSON (de)serialization for the DB jsonb / editor — Infinity ↔ null ──────────

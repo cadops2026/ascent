@@ -8,6 +8,7 @@ import { DashboardDigestStrip } from './DashboardDigestStrip'
 import { fmtMoneyCompact } from '../../lib/format'
 import { computeBalanceSheet } from '../../lib/finance/networth'
 import type { AssetClass } from '../../lib/finance/networth'
+import { CMA_KEY_FOR_COARSE } from '../../lib/finance/assetclass'
 import { estateExposure } from '../../lib/finance/estate'
 import type { FilingStatus } from '../../lib/db'
 import { buildCma, applyCmaOverride, recenterCmaToReal } from '../../lib/finance/cma'
@@ -25,11 +26,6 @@ import { AdvisorPanel } from './AdvisorPanel'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { AllocationPie } from '../balance/AllocationPie'
 
-/** Balance-sheet AssetClass → consensus-CMA / asset-class-universe key. */
-const CLASS_MAP: Record<AssetClass, string> = {
-  Equities: 'us_equity', Crypto: 'crypto', Cash: 'cash',
-  Private: 'private_equity', Collectibles: 'collectibles', 'Real estate': 'real_estate',
-}
 const SIMS = 3000
 
 function ageFromDob(dob: string | null | undefined): number | null {
@@ -95,14 +91,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
   const retireAge = data.profile?.retire_age ?? 65
   const withdrawal = data.spending?.annual_amount ?? 0
 
-  const weights = useMemo(() => {
-    const w: Record<string, number> = {}
-    for (const s of bs.byClass) {
-      const k = CLASS_MAP[s.class]
-      if (k) w[k] = (w[k] ?? 0) + s.value
-    }
-    return w
-  }, [bs])
+  const weights = bs.cmaWeights
   const cmaEff = useMemo(
     () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
     [cma, weights, growthOverride],
@@ -125,7 +114,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
   const betaByClass = useMemo(() => {
     const uniMap = new Map(betas.map((b) => [b.class, b.corr_to_us_equity ?? 0]))
     const out: Partial<Record<AssetClass, number>> = {}
-    for (const cls of Object.keys(CLASS_MAP) as AssetClass[]) out[cls] = uniMap.get(CLASS_MAP[cls]) ?? 0
+    for (const cls of Object.keys(CMA_KEY_FOR_COARSE) as AssetClass[]) out[cls] = uniMap.get(CMA_KEY_FOR_COARSE[cls]) ?? 0
     return out
   }, [betas])
   const worst = useMemo(() => {

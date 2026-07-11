@@ -1,0 +1,17 @@
+{
+  // Type-checks the engine unit tests (run by `node --test`, which only strips
+  // types). Standalone — NOT part of `tsc -b` / `vite build` (tests are excluded
+  // from tsconfig.app.json so the production build stays clean). Same strict rules
+  // as the app, but with Node types for `node:test` / `node:assert`. The finance
+  // engines are DOM-free, so they type-check fine under Node libs.
+  //   npx tsc -p tsconfig.test.json --noEmit
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "types": ["node"],
+    "lib": ["ES2023"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.test.ts", "src/lib/finance/**/*.ts"],
+  "exclude": []
+}

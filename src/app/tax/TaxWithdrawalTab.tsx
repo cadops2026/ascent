@@ -8,6 +8,8 @@ import {
   taxBuckets, withdrawalSequence, assetLocation, tlhLotOpportunities, rmdProjection,
   rothConversion, coordinatePrompts, bucketForTaxType,
 } from '../../lib/finance/tax'
+import { taxAdvantagedReview } from '../../lib/finance/taxadvantaged'
+import { amtExposure, ordinaryTax, standardDeduction } from '../../lib/finance/taxtables'
 import { buildCma, applyCmaOverride, recenterCmaToReal } from '../../lib/finance/cma'
 import { useCmaParams } from '../../lib/useCmaParams'
 import { buildInflationCurve, flatInflationCurve } from '../../lib/finance/inflation'
@@ -22,10 +24,6 @@ import { useBalanceSheet } from '../balance/useBalanceSheet'
 import { useTaxParams } from '../../lib/useTaxParams'
 import { useAuth } from '../../auth/AuthProvider'
 
-const CLASS_MAP: Record<string, string> = {
-  Equities: 'us_equity', Crypto: 'crypto', Cash: 'cash',
-  Private: 'private_equity', Collectibles: 'collectibles', 'Real estate': 'real_estate',
-}
 
 export function TaxWithdrawalTab() {
   const { data, loading } = useBalanceSheet()
@@ -60,6 +58,7 @@ export function TaxWithdrawalTab() {
   const buckets = useMemo(() => taxBuckets(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
   const sequence = useMemo(() => withdrawalSequence(buckets.byBucket), [buckets.byBucket])
   const location = useMemo(() => assetLocation(data.accounts, data.holdings, data.quotes), [data.accounts, data.holdings, data.quotes])
+  const advantaged = useMemo(() => taxAdvantagedReview(data.accounts, taxParams), [data.accounts, taxParams])
   const tlh = useMemo(
     () => tlhLotOpportunities(data.accounts, data.holdings, lots, data.quotes),
     [data.accounts, data.holdings, lots, data.quotes],
@@ -83,7 +82,12 @@ export function TaxWithdrawalTab() {
   const [filing, setFiling] = useState<FilingStatus>('mfj')
   const [income, setIncome] = useState(150_000)
   const [amount, setAmount] = useState(50_000)
+  const [amtPref, setAmtPref] = useState(0) // AMT preference items (ISO bargain element, etc.)
   const roth = useMemo(() => rothConversion(income, amount, filing, taxParams), [income, amount, filing, taxParams])
+  const amt = useMemo(() => {
+    const amti = income + standardDeduction(filing, taxParams) + amtPref // add back the std deduction + preferences
+    return amtExposure(amti, ordinaryTax(income, filing, taxParams), filing, taxParams)
+  }, [income, amtPref, filing, taxParams])
 
   // Withdrawal planner inputs (reuses the consensus-CMA + inflation engines).
   const { params: cmaOverride } = useCmaParams()
@@ -98,14 +102,7 @@ export function TaxWithdrawalTab() {
     () => computeBalanceSheet(data.holdings, data.realEstate, data.liabilities, data.quotes),
     [data.holdings, data.realEstate, data.liabilities, data.quotes],
   )
-  const weights = useMemo(() => {
-    const w: Record<string, number> = {}
-    for (const s of bs.byClass) {
-      const k = CLASS_MAP[s.class]
-      if (k) w[k] = (w[k] ?? 0) + s.value
-    }
-    return w
-  }, [bs.byClass])
+  const weights = bs.cmaWeights
   const cmaEff = useMemo(
     () => (growthOverride != null ? recenterCmaToReal(cma, weights, growthOverride) : cma),
     [cma, weights, growthOverride],
@@ -142,7 +139,7 @@ export function TaxWithdrawalTab() {
         </Panel>
       ) : (
         <>
-          <TaxPanels buckets={buckets} sequence={sequence} location={location} rmd={rmd} tlh={tlh} prompts={prompts} />
+          <TaxPanels buckets={buckets} advantaged={advantaged} sequence={sequence} location={location} rmd={rmd} tlh={tlh} prompts={prompts} />
 
           <TaxLotsEditor
             accounts={data.accounts}
@@ -222,6 +219,26 @@ export function TaxWithdrawalTab() {
               Converting fills bracket space now to buy tax-free growth later — best in low-income years before
               RMDs. Watch the {taxParams.year} bracket edges and the IRMAA cliffs (your MAGI two years prior sets the
               Medicare surcharge). Figures are approximate and directional — confirm with your CPA (invariant #9).
+            </p>
+          </Panel>
+
+          {/* AMT exposure (parallel system) */}
+          <Panel label="AMT exposure" right={<MicroLabel className="text-faint">parallel system · uses income above</MicroLabel>}>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Field label="AMT preference items" hint="ISO bargain element, etc.">
+                <Input type="number" value={amtPref} onChange={(e) => setAmtPref(Number(e.target.value))} />
+              </Field>
+            </div>
+            <div className="mt-5 grid gap-5 sm:grid-cols-3">
+              <Figure label="Tentative minimum tax" value={amt.tentativeMinTax} format="moneyCompact" accent="ink" size="md" sublabel={`AMTI ~${fmtMoneyCompact(amt.amti)}`} />
+              <Figure label="Regular tax" value={amt.regularTax} format="moneyCompact" accent="ink" size="md" sublabel="on the taxable income above" />
+              <Figure label="AMT owed" value={amt.amtOwed} format="moneyCompact" accent={amt.binding ? 'coral' : 'teal'} size="md" sublabel={amt.binding ? 'AMT is binding' : 'not binding'} />
+            </div>
+            <p className="mt-4 text-xs leading-relaxed text-faint">
+              You owe AMT only when the tentative minimum tax exceeds your regular tax. For a W2 earner taking the
+              standard deduction with no ISO exercises it rarely binds — the classic trigger is exercising and{' '}
+              <span className="text-ink">holding</span> ISOs, where the bargain element is a preference item. Enter it
+              above to size the hit. Directional, not a Form 6251 (invariant #9).
             </p>
           </Panel>
         </>

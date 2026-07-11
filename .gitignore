@@ -36,3 +36,7 @@ deno.lock
 *.njsproj
 *.sln
 *.sw?
+
+# Personal financial documents — never commit (statements, confirms, photos)
+Ascent DOCS/*
+!Ascent DOCS/*.md

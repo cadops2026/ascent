@@ -1,6 +1,7 @@
 import type { Holding, Account, FilingStatus, TaxLot } from '../db'
 import { holdingValue } from './networth'
 import type { QuoteMap } from './networth'
+import { cmaClassForHolding, isMuniBond } from './assetclass'
 import { bracketAt, bracketsFor, marginalRate, irmaaTier, rmdDivisor, rmdStartAge } from './taxtables'
 import { DEFAULT_TAX_PARAMS } from './taxparams'
 import type { TaxParams } from './taxparams'
@@ -87,16 +88,22 @@ export function assetLocation(accounts: Account[], holdings: Holding[], quotes: 
   const acctBucket = new Map(accounts.map((a) => [a.id, bucketForTaxType(a.tax_type)]))
   let cashInTaxable = 0
   let equityInRoth = 0
+  let taxableBondNonMuni = 0 // taxable-account bonds/TIPS that aren't munis
   for (const h of holdings) {
     const v = holdingValue(h, quotes) ?? 0
     if (v <= 0) continue
     const b = (h.account_id && acctBucket.get(h.account_id)) || 'taxable'
     if (h.kind === 'cash' && b === 'taxable') cashInTaxable += v
     if ((h.kind === 'stock' || h.kind === 'etf') && b === 'tax_free') equityInRoth += v
+    const cls = cmaClassForHolding(h)
+    if ((cls === 'bonds' || cls === 'tips') && b === 'taxable' && !isMuniBond(h.symbol)) taxableBondNonMuni += v
   }
   const flags: LocationFlag[] = []
+  const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+  if (taxableBondNonMuni > 25_000)
+    flags.push({ tone: 'watch', text: `~${usd(taxableBondNonMuni)} of taxable bond funds sit in a taxable account, where the interest is taxed as ordinary income at your marginal bracket. For a high earner: hold municipal bonds in taxable (federally — and in-state, NJ — tax-exempt), or move the taxable bonds into tax-deferred space.` })
   if (cashInTaxable > 25_000)
-    flags.push({ tone: 'watch', text: `~${Math.round(cashInTaxable).toLocaleString('en-US')} of cash sits in taxable accounts, generating taxable interest. Interest-bearing assets are usually better held in tax-deferred space.` })
+    flags.push({ tone: 'watch', text: `~${usd(cashInTaxable)} of cash sits in taxable accounts, generating taxable interest. Interest-bearing assets are usually better held in tax-deferred space (or a muni money-market for taxable).` })
   if (equityInRoth > 0)
     flags.push({ tone: 'ok', text: 'Growth equities in Roth is good location — the highest-expected-growth assets shelter best in tax-free space.' })
   if (flags.length === 0) flags.push({ tone: 'ok', text: 'No obvious location inefficiency from the current holdings.' })

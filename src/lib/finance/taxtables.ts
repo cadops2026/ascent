@@ -116,3 +116,55 @@ export function ltcgTax(
   tax += Math.max(0, remaining) * 0.2 // 20% band
   return tax
 }
+
+/**
+ * Net Investment Income Tax — the 3.8% surtax on net investment income (here,
+ * realized LTCG) to the extent MAGI exceeds the filing threshold ($200k single /
+ * $250k MFJ). For a high earner this makes the *effective* top LTCG rate 23.8%, not
+ * 20% — omitting it understates a HNW investor's tax. `magiExclNii` is income before
+ * this investment income (NIIT keys off MAGI/AGI, before the standard deduction).
+ */
+export function niitTax(
+  magiExclNii: number,
+  nii: number,
+  filing: FilingStatus,
+  p: TaxParams = DEFAULT_TAX_PARAMS,
+): number {
+  if (nii <= 0) return 0
+  const over = Math.max(0, magiExclNii + nii - p.niitThreshold[filing])
+  return p.niitRate * Math.min(nii, over)
+}
+
+/**
+ * Tentative Minimum Tax on AMT income — the exemption (phased out 25¢/$ above the
+ * start) is subtracted, then 26% up to the breakpoint and 28% above. AMTI = regular
+ * taxable income + AMT add-backs (standard deduction, ISO bargain element, etc.).
+ */
+export function tentativeMinimumTax(amti: number, filing: FilingStatus, p: TaxParams = DEFAULT_TAX_PARAMS): number {
+  if (amti <= 0) return 0
+  const exemption = Math.max(0, p.amt.exemption[filing] - 0.25 * Math.max(0, amti - p.amt.phaseoutStart[filing]))
+  const base = Math.max(0, amti - exemption)
+  const thr = filing === 'mfs' ? p.amt.rate28Threshold / 2 : p.amt.rate28Threshold
+  return base <= thr ? base * 0.26 : thr * 0.26 + (base - thr) * 0.28
+}
+
+export interface AmtExposure {
+  amti: number
+  tentativeMinTax: number
+  regularTax: number
+  amtOwed: number // extra owed if TMT exceeds regular tax
+  binding: boolean
+}
+
+/** AMT exposure: you owe AMT to the extent the tentative minimum tax exceeds your
+ *  regular tax. Directional flag — not a filed Form 6251 (invariant #9). */
+export function amtExposure(
+  amti: number,
+  regularTax: number,
+  filing: FilingStatus,
+  p: TaxParams = DEFAULT_TAX_PARAMS,
+): AmtExposure {
+  const tmt = tentativeMinimumTax(amti, filing, p)
+  const amtOwed = Math.max(0, tmt - regularTax)
+  return { amti, tentativeMinTax: tmt, regularTax, amtOwed, binding: amtOwed > 0 }
+}

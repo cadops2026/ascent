@@ -3,7 +3,7 @@ import type { McParams } from './montecarlo'
 import type { ClassCma } from './cma'
 import type { InflationCurve } from './inflation'
 import type { FilingStatus } from '../db'
-import { standardDeduction, ordinaryTax, ltcgTax, marginalRate } from './taxtables'
+import { standardDeduction, ordinaryTax, ltcgTax, niitTax, marginalRate } from './taxtables'
 import { DEFAULT_TAX_PARAMS } from './taxparams'
 import type { TaxParams } from './taxparams'
 
@@ -30,6 +30,9 @@ export interface MaxWithdrawalInput {
   annualContribution?: number
   confidenceTarget: number // e.g. 0.85
   sims?: number
+  /** Solve for the dynamic Guyton-Klinger strategy rather than a constant spend —
+   *  yields a higher sustainable *initial* spend at the same confidence. */
+  guardrails?: boolean
 }
 
 export interface MaxWithdrawalResult {
@@ -52,6 +55,7 @@ export function solveMaxWithdrawal(
     horizonYears: inp.horizonYears,
     annualContribution: inp.annualContribution ?? 0,
     sims,
+    ...(inp.guardrails ? { guardrails: {} } : {}),
   }
   const success = (w: number) => monteCarlo(cma, infl, { ...base, annualWithdrawal: w }).successProbability
 
@@ -167,10 +171,16 @@ export function taxAwareSourcing(inp: SourcingInput, params: TaxParams = DEFAULT
   }
   remaining = Math.max(0, remaining)
 
-  // 2) Taxable — only the gain fraction is taxed, at LTCG stacked on ordinary income.
+  // 2) Taxable — only the gain fraction is taxed: LTCG stacked on ordinary income,
+  //    plus the 3.8% NIIT once MAGI clears the threshold (the effective top rate is
+  //    23.8%, not 20%). LTCG bands key off taxable income (after the std deduction);
+  //    NIIT keys off MAGI (≈ gross, before it). Drawn before tax-deferred, so MAGI
+  //    here is other income + RMD + the gain (a slight ordering approximation).
   if (remaining > 0 && inp.taxable > 0) {
     const ordTaxable = Math.max(0, ordinaryGross - stdDed)
-    const taxOfGross = (g: number) => ltcgTax(ordTaxable, g * inp.gainFraction, inp.filing, params)
+    const taxOfGross = (g: number) =>
+      ltcgTax(ordTaxable, g * inp.gainFraction, inp.filing, params) +
+      niitTax(ordinaryGross, g * inp.gainFraction, inp.filing, params)
     const gross = grossForNet(remaining, inp.taxable, taxOfGross)
     const tax = taxOfGross(gross)
     const net = gross - tax

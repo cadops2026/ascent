@@ -35,8 +35,8 @@ export const STRESS_SCENARIOS: StressScenario[] = [
     id: 'y2022',
     name: 'Rate shock',
     period: '2022',
-    note: 'Inflation/rate repricing; duration and crypto hit.',
-    shocks: { Equities: -0.25, Crypto: -0.65, Private: -0.2, Collectibles: -0.1, 'Real estate': -0.1 },
+    note: 'Inflation/rate repricing; duration and crypto hit. The one analog where bonds fall.',
+    shocks: { Equities: -0.25, Bonds: -0.13, Crypto: -0.65, Private: -0.2, Collectibles: -0.1, 'Real estate': -0.1 },
   },
   {
     id: 'cryptowinter',

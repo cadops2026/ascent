@@ -2,12 +2,14 @@ import { ComposedChart, Area, Line, XAxis, YAxis, ResponsiveContainer } from 're
 import { fmtMoneyCompact } from '../../lib/format'
 
 /** One point on the real-dollar wealth path: an age, the P10 floor (`lo`),
- *  the P10→P90 `span` stacked above it, and the median (`p50`). */
+ *  the P10→P90 `span` stacked above it, the median (`p50`), and the 1-in-100
+ *  deep-tail floor (`p01`) — where the fat-tailed years show up. */
 export interface WealthPathPoint {
   age: number
   lo: number
   span: number
   p50: number
+  p01: number
 }
 
 /**
@@ -32,6 +34,15 @@ export function WealthPathChart({ data }: { data: WealthPathPoint[] }) {
           <Area dataKey="lo" stackId="band" stroke="none" fill="transparent" isAnimationActive={false} />
           <Area dataKey="span" stackId="band" stroke="none" fill="var(--color-indigo-soft)" isAnimationActive={false} />
           <Line dataKey="p50" stroke="var(--color-teal)" strokeWidth={2} dot={false} isAnimationActive={false} />
+          {/* 1-in-100 deep-tail floor — where the fat tails show (below the P10 band). */}
+          <Line
+            dataKey="p01"
+            stroke="var(--color-coral)"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            dot={false}
+            isAnimationActive={false}
+          />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

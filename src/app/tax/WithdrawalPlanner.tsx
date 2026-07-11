@@ -54,6 +54,22 @@ export function WithdrawalPlanner(p: WithdrawalPlannerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.cma, p.infl, p.weights, p.investable, p.currentAge, dq.retire, dq.plan, dq.conf, p.hasReferenceData])
 
+  // Same solve under dynamic Guyton-Klinger guardrails — a higher sustainable
+  // *initial* spend at the same confidence, because spending flexes with the market.
+  const solvedGuard = useMemo(() => {
+    if (!p.hasReferenceData || p.investable <= 0) return null
+    return solveMaxWithdrawal(p.cma, p.infl, {
+      initialWealth: p.investable,
+      weights: p.weights,
+      retirementInYears: Math.max(0, dq.retire - p.currentAge),
+      horizonYears: Math.max(1, dq.plan - p.currentAge),
+      confidenceTarget: dq.conf / 100,
+      sims: 1500,
+      guardrails: true,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.cma, p.infl, p.weights, p.investable, p.currentAge, dq.retire, dq.plan, dq.conf, p.hasReferenceData])
+
   const plannedSpend = spend ?? solved?.withdrawal ?? 0
   const guardrails = useMemo(() => guytonKlingerGuardrails(plannedSpend, p.investable), [plannedSpend, p.investable])
   const sourcing = useMemo(
@@ -81,18 +97,37 @@ export function WithdrawalPlanner(p: WithdrawalPlannerProps) {
             {p.hasReferenceData ? 'Add investable holdings to solve a sustainable withdrawal.' : 'Loading market assumptions…'}
           </p>
         ) : (
-          <Figure
-            label={`Max sustainable spend @ ${confidence}% confidence`}
-            value={solved.withdrawal}
-            format="moneyCompact"
-            accent={solved.feasible ? 'teal' : 'coral'}
-            size="hero"
-            sublabel={`${fmtPct(solved.rate, 2)} of investable · today's $ · Monte Carlo, real terms`}
-          />
+          <div className="grid gap-8 sm:grid-cols-2">
+            <Figure
+              label={`Constant spend @ ${confidence}% confidence`}
+              value={solved.withdrawal}
+              format="moneyCompact"
+              accent={solved.feasible ? 'teal' : 'coral'}
+              size="hero"
+              sublabel={`${fmtPct(solved.rate, 2)} of investable · today's $ · real terms`}
+            />
+            {solvedGuard && (
+              <Figure
+                label="With dynamic guardrails (initial spend)"
+                value={solvedGuard.withdrawal}
+                format="moneyCompact"
+                accent="indigo"
+                size="hero"
+                sublabel={
+                  solvedGuard.withdrawal > solved.withdrawal
+                    ? `+${fmtMoneyCompact(solvedGuard.withdrawal - solved.withdrawal)} vs constant · flexes with markets`
+                    : `${fmtPct(solvedGuard.rate, 2)} of investable · flexes with markets`
+                }
+              />
+            )}
+          </div>
         )}
         <p className="mt-3 text-xs text-faint">
-          The largest constant inflation-adjusted spend the plan supports at your confidence — the inverse of the
-          Projection's success probability. Every figure is a real-dollar estimate, not a guarantee (invariant #4).
+          Left: the largest <span className="text-ink">constant</span> inflation-adjusted spend the plan supports
+          (inverse of the Projection's success probability). Right: a higher <span className="text-ink">initial</span>{' '}
+          spend if you pre-commit to the Guyton-Klinger guardrails below — the Monte Carlo now <em>simulates</em> those
+          cuts/raises, so the extra is earned by flexing spending in bad markets, not by taking more risk. Estimates,
+          not guarantees (invariant #4).
         </p>
       </Panel>
 
