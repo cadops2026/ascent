@@ -23,9 +23,18 @@ bundle: the project ref `rhpdjuigivbwfvzoljsa` is absent, even after a forced fr
 Supabase → **Authentication → URL Configuration**: set **Site URL** and add a **Redirect URL**
 of `https://ascent-umber.vercel.app`. Then magic-link login works on the live site.
 
-## Housekeeping
-- `package.json` shows as modified in the working tree — a **pre-existing** change from before this
-  work (not part of it). Commit or discard as desired.
+## Housekeeping — pre-existing WIP in the working tree (NOT from this session)
+This session's work is all committed on `main`. Separately, the working tree carries ~18 files of
+**uncommitted changes that predate this session** and were left untouched — notably a large
+`montecarlo.ts` rewrite (+164) and tax work (`taxparams.ts`, `taxtables.ts`, `TaxPanels.tsx`,
+`WithdrawalPlanner.tsx`, `TaxWithdrawalTab.tsx`), plus untracked files `src/lib/finance/assetclass.ts`,
+`correlation.ts`, `taxadvantaged.ts`, `scripts/`, `src/lib/finance/__tests__/`, `tsconfig.test.json`.
+
+⚠️ **Several overlap files this session also edited** (montecarlo, networth, drawdownstress,
+ProjectionTab, RiskExposureTab, Dashboard, TaxWithdrawalTab, WorkGlidePathTab). This session's versions
+are the committed ones on `main`; the working-tree WIP diverges from them. Reconcile before committing the
+WIP so this session's changes aren't clobbered. Review / commit / discard as you decide.
+
 - A non-dev, click-by-click deploy guide was produced as a Claude artifact; `DEPLOY.md` has the written version.
 
 ## Optional follow-ups discussed
