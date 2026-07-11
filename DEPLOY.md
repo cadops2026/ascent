@@ -15,7 +15,7 @@ You'll need your two public values (already in `.env.local`):
 ## 1. Host the frontend on Vercel (free, ~5 min)
 
 1. Go to **vercel.com**, sign in **with GitHub**, and click **Add New → Project**.
-2. Import the **`Jamzli/ascent`** repo.
+2. Import the **`yurykhelemsky-source/ascent`** repo.
 3. Vercel auto-detects Vite (this repo also ships `vercel.json`). Leave the defaults:
    - Build command: `npm run build`
    - Output directory: `dist`
@@ -27,7 +27,7 @@ You'll need your two public values (already in `.env.local`):
 
 Every future `git push` to that branch redeploys automatically.
 
-> Prefer **Cloudflare Pages**? Same idea: Create project → connect `Jamzli/ascent` →
+> Prefer **Cloudflare Pages**? Same idea: Create project → connect `yurykhelemsky-source/ascent` →
 > framework preset **Vite**, build `npm run build`, output `dist`, add the same two
 > env vars.
 
