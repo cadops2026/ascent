@@ -23,17 +23,15 @@ bundle: the project ref `rhpdjuigivbwfvzoljsa` is absent, even after a forced fr
 Supabase → **Authentication → URL Configuration**: set **Site URL** and add a **Redirect URL**
 of `https://ascent-umber.vercel.app`. Then magic-link login works on the live site.
 
-## Housekeeping — pre-existing WIP in the working tree (NOT from this session)
-This session's work is all committed on `main`. Separately, the working tree carries ~18 files of
-**uncommitted changes that predate this session** and were left untouched — notably a large
-`montecarlo.ts` rewrite (+164) and tax work (`taxparams.ts`, `taxtables.ts`, `TaxPanels.tsx`,
-`WithdrawalPlanner.tsx`, `TaxWithdrawalTab.tsx`), plus untracked files `src/lib/finance/assetclass.ts`,
-`correlation.ts`, `taxadvantaged.ts`, `scripts/`, `src/lib/finance/__tests__/`, `tsconfig.test.json`.
+## Housekeeping — WIP committed (2026-07-11)
+The working-tree WIP (Monte Carlo lognormal rewrite, correlation matrix, asset-class taxonomy,
+tax engine upgrades, 27-test suite) is now **committed as `e392c34`** and pushed to both
+`balance-sheet-pricing-and-real-cma` and `main`. Verified before commit: `tsc` clean, oxlint
+clean, all 27 tests pass, production build succeeds. The adversarial-review P0-A and P0-B
+findings are fixed.
 
-⚠️ **Several overlap files this session also edited** (montecarlo, networth, drawdownstress,
-ProjectionTab, RiskExposureTab, Dashboard, TaxWithdrawalTab, WorkGlidePathTab). This session's versions
-are the committed ones on `main`; the working-tree WIP diverges from them. Reconcile before committing the
-WIP so this session's changes aren't clobbered. Review / commit / discard as you decide.
+**Never commit the personal documents in `Ascent DOCS/`** (brokerage statements, confirms,
+photos) — `.gitignore` now excludes everything there except `*.md`.
 
 - A non-dev, click-by-click deploy guide was produced as a Claude artifact; `DEPLOY.md` has the written version.
 
