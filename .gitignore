@@ -40,3 +40,5 @@ deno.lock
 # Personal financial documents — never commit (statements, confirms, photos)
 Ascent DOCS/*
 !Ascent DOCS/*.md
+.vercel
+.env*
