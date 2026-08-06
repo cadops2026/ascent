@@ -6,18 +6,28 @@
 - **Frontend:** deployed on Vercel at **https://ascent-umber.vercel.app** (also runs locally via `npm run dev`).
 - **Keepalive:** GitHub Action `keepalive.yml` is **active**; repo secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` are set, so free-tier Supabase won't pause.
 
-## ⚠️ OPEN ISSUE — finish this first
-The Vercel build does **not** contain the Supabase env vars, so the live site shows the
-**"Connect Supabase"** screen instead of the login. Verified by inspecting the deployed
-bundle: the project ref `rhpdjuigivbwfvzoljsa` is absent, even after a forced fresh build.
+## ⚠️ OPEN ISSUE — Vercel isn't shipping new commits to production
+The env-var problem is now **bypassed in code**: `src/lib/env.ts` bakes in the project's public
+Supabase URL + anon key as defaults (commit `3078a54` on `main`), so NO Vercel env-var config is
+needed. The anon key is public by design (RLS protects data), so this is safe.
 
-**Fix:**
-1. Vercel → **ascent** project → **Settings → Environment Variables**. Ensure BOTH exist **and are enabled for Production**:
-   - `VITE_SUPABASE_URL` = `https://rhpdjuigivbwfvzoljsa.supabase.co`
-   - `VITE_SUPABASE_ANON_KEY` = (the anon key, in `.env.local`)
-   - Common cause: they were added only to Preview/Development, or never saved (didn't click **Add** on the import screen).
-2. Redeploy (Deployments → ⋯ → Redeploy) OR push any commit — a fresh build inlines them.
-3. Verify: `curl -s https://ascent-umber.vercel.app/assets/index-*.js | grep rhpdjuigivbwfvzoljsa` should match.
+**BUT** the production URL **https://ascent-umber.vercel.app** is stuck on the FIRST build
+(`index-mOJmIHc9.js`, `main`@`85d4e35`) and still shows **"Connect Supabase."** Vercel has not
+deployed ANY `main` commit since the first one, despite several pushes. Verified: the baked config is
+on `main` but absent from the live bundle.
+
+**Fix (Vercel dashboard — account owner):**
+1. Vercel → **ascent** project → **Settings → Git**: confirm **Production Branch = `main`** and Git
+   auto-deploy is on.
+2. **Deployments** tab → ship the latest `main`: it should auto-build once #1 is right; otherwise
+   **⋯ → Redeploy** the newest and **UNCHECK "use existing build cache."**
+3. If a deploy is **failing**, open its **Build Logs** and paste the error (main includes a parallel
+   session's Monte Carlo/correlation rewrite — a build error there would keep the old build live).
+4. Success check: `curl -s https://ascent-umber.vercel.app/assets/index-*.js | grep rhpdjuigivbwfvzoljsa`
+   matches, and the site shows the **login screen**, not "Connect Supabase."
+
+## Works locally right now
+`npm run dev` → http://localhost:5173 fully works (`.env.local` has the keys). Use that until Vercel ships.
 
 ## Then — last step for login to work
 Supabase → **Authentication → URL Configuration**: set **Site URL** and add a **Redirect URL**
