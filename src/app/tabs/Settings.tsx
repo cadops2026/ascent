@@ -51,6 +51,14 @@ export function Settings() {
         <MacroAssumptionsEditor />
       </div>
 
+      <Panel label="Password" className="mt-5">
+        <p className="text-sm leading-relaxed text-muted">
+          Sign-in uses email and password, so no email round-trip is needed and nothing here depends on
+          the provider&rsquo;s send limits. Change it whenever you like.
+        </p>
+        <ChangePassword />
+      </Panel>
+
       <Panel label="Holdings data" className="mt-5">
         <p className="text-sm leading-relaxed text-muted">
           Clear every holding to start the balance sheet over. Accounts, properties, and plans are kept —
@@ -70,6 +78,85 @@ export function Settings() {
           onDeleted={signOut}
         />
       </Panel>
+    </div>
+  )
+}
+
+const MIN_PASSWORD = 8
+
+/**
+ * Change password in-app. `updateUser` applies to the signed-in session, so it
+ * needs no email and no reauthentication while `secure_password_change` is off
+ * (the project's current setting). Confirm field is local-only — Supabase has no
+ * "confirm" concept, it just prevents a typo becoming a lockout.
+ */
+function ChangePassword() {
+  const [pw, setPw] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [status, setStatus] = useState<'idle' | 'saving' | 'done'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    setError(null)
+    if (pw.length < MIN_PASSWORD) {
+      setError(`Use at least ${MIN_PASSWORD} characters.`)
+      return
+    }
+    if (pw !== confirm) {
+      setError('The two entries do not match.')
+      return
+    }
+    setStatus('saving')
+    const { error } = await supabase.auth.updateUser({ password: pw })
+    if (error) {
+      setError(error.message)
+      setStatus('idle')
+      return
+    }
+    setPw('')
+    setConfirm('')
+    setStatus('done')
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+        <div>
+          <MicroLabel className="mb-1.5">New password</MicroLabel>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={pw}
+            onChange={(e) => {
+              setPw(e.target.value)
+              setStatus('idle')
+            }}
+            placeholder={`at least ${MIN_PASSWORD} characters`}
+          />
+        </div>
+        <div>
+          <MicroLabel className="mb-1.5">Confirm</MicroLabel>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => {
+              setConfirm(e.target.value)
+              setStatus('idle')
+            }}
+            placeholder="repeat it"
+          />
+        </div>
+        <div className="flex items-end">
+          <Button onClick={save} disabled={status === 'saving' || !pw || !confirm}>
+            {status === 'saving' ? 'Saving…' : 'Update'}
+          </Button>
+        </div>
+      </div>
+      {error && <p className="mt-2 text-sm text-coral">{error}</p>}
+      {status === 'done' && (
+        <p className="mt-2 text-sm text-teal">Password updated. It applies the next time you sign in.</p>
+      )}
     </div>
   )
 }
