@@ -30,7 +30,7 @@ policy terms and earned income save for real.**
 # HANDOFF — state as of 2026-07-11
 
 ## Where things live now
-- **Repo:** `github.com/yurykhelemsky-source/ascent` (moved off the Jamzli account; `main` has everything).
+- **Repo:** `github.com/cadops2026/ascent` (private; `main` has everything). Superseded `yurykhelemsky-source/ascent`, kept as the `old-origin` remote.
 - **Backend (Supabase, project `rhpdjuigivbwfvzoljsa`):** all live — migrations applied, edge functions deployed (`refresh-etf-holdings` keyless-Yahoo, `refresh-crypto`, `refresh-quotes`, `parse-statements`).
 - **Frontend:** deployed on Vercel at **https://ascent-umber.vercel.app** (also runs locally via `npm run dev`).
 - **Keepalive:** GitHub Action `keepalive.yml` is **active**; repo secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` are set, so free-tier Supabase won't pause.
@@ -78,3 +78,13 @@ photos) — `.gitignore` now excludes everything there except `*.md`.
 - Remove `Jamzli` as a collaborator on the repo for full separation; switch this Mac's git auth to the personal account.
 - Persist the Projection contribution schedule + DOB-driven age to the Dashboard.
 - Wire the Settings global real-growth override into the drawdown recovery rate.
+
+## Why Vercel stopped deploying (RESOLVED 2026-08-06)
+Not a build failure, not the production-branch setting, and not a broken Git connection — all three
+were red herrings in the earlier runbook. Vercel *was* receiving pushes and creating deployments;
+it **blocked** them with: *"the commit email yhr9txwf7d@privaterelay.appleid.com could not be matched
+to a GitHub account."* The commit author was an Apple private-relay address registered on no GitHub
+account, so Vercel refused to attribute the commit. Fix: commit identity is now
+`cadops2026 <313970716+cadops2026@users.noreply.github.com>` (a GitHub noreply address, which always
+resolves). Verified via the API: `commit.author.email` → `author.login: cadops2026`.
+**If the repo ever moves accounts again, the noreply address must be regenerated for that account.**
