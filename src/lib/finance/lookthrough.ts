@@ -28,6 +28,20 @@ export interface LookThrough {
   singleNameMax: NameExposure | null
   unresolvedEtfs: string[]
   realEstateFactor: number
+  /**
+   * Value sitting inside funds whose composition we can't enumerate — the tail
+   * beyond a fund's cached top holdings, plus any fund with no data at all.
+   *
+   * This is deliberately NOT a single name. A broad index fund's top 10 is only
+   * ~35% of it; the other ~65% is thousands of diversified companies. Ranking
+   * that tail as one "name" overstates concentration badly — it would put a
+   * whole-market fund's remainder above your largest real position. It counts in
+   * investable and is reported here honestly, but never competes for
+   * `singleNameMax` or `topNames`.
+   */
+  unexplained: number
+  /** `unexplained` as a fraction of investable. */
+  unexplainedPct: number
 }
 
 /**
@@ -154,6 +168,7 @@ export function lookThrough(
   }
 
   let investable = 0
+  let unexplained = 0
   const investmentRE = realEstate.filter((p) => p.kind === 'investment').reduce((s, p) => s + p.market_value, 0)
   investable += investmentRE
 
@@ -175,11 +190,13 @@ export function lookThrough(
           add(c.symbol, c.name ?? c.symbol, v * c.weight, true)
           sumW += c.weight
         }
-        const label = h.symbol ? h.symbol.toUpperCase() : (h.name ?? 'fund')
-        if (sumW < 0.999) add(`${label}~OTHER`, `${label} (other)`, v * (1 - sumW), false)
+        // The tail beyond the cached top holdings is diversified, not a name.
+        if (sumW < 0.999) unexplained += v * (1 - sumW)
       } else {
+        // No composition at all. Still not a single name — an unresolved fund is
+        // a basket we can't see into, not a concentrated bet on one company.
         const label = h.symbol ? h.symbol.toUpperCase() : (h.name ?? 'Fund')
-        add(label, label, v, false)
+        unexplained += v
         unresolved.add(label)
       }
       continue
@@ -201,6 +218,8 @@ export function lookThrough(
     singleNameMax: names[0] ?? null,
     unresolvedEtfs: [...unresolved],
     realEstateFactor: residence + investmentRE,
+    unexplained,
+    unexplainedPct: investable > 0 ? unexplained / investable : 0,
   }
 }
 

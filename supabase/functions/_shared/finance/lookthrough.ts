@@ -30,6 +30,11 @@ export interface LookThrough {
   singleNameMax: NameExposure | null
   unresolvedEtfs: string[]
   realEstateFactor: number
+  /** Value inside funds we can't enumerate (tail beyond cached top holdings, plus
+   *  funds with no data). Diversified, so never ranked as a single name — kept in
+   *  step with src/lib/finance/lookthrough.ts (invariant #1). */
+  unexplained: number
+  unexplainedPct: number
 }
 
 export function buildEtfMap(rows: EtfHoldingRow[]): EtfMap {
@@ -72,6 +77,7 @@ export function lookThrough(
   }
 
   let investable = 0
+  let unexplained = 0
   const investmentRE = realEstate.filter((p) => p.kind === 'investment').reduce((s, p) => s + p.market_value, 0)
   investable += investmentRE
 
@@ -90,9 +96,9 @@ export function lookThrough(
           add(c.symbol, c.name ?? c.symbol, v * c.weight, true)
           sumW += c.weight
         }
-        if (sumW < 0.999) add(h.symbol, `${h.symbol.toUpperCase()} (other)`, v * (1 - sumW), false)
+        if (sumW < 0.999) unexplained += v * (1 - sumW)
       } else {
-        add(h.symbol, h.symbol.toUpperCase(), v, false)
+        unexplained += v
         unresolved.add(h.symbol.toUpperCase())
       }
       continue
@@ -114,5 +120,7 @@ export function lookThrough(
     singleNameMax: names[0] ?? null,
     unresolvedEtfs: [...unresolved],
     realEstateFactor: residence + investmentRE,
+    unexplained,
+    unexplainedPct: investable > 0 ? unexplained / investable : 0,
   }
 }

@@ -149,9 +149,9 @@ export function LookThroughTab() {
       <Panel
         label="Top 10 underlying companies"
         right={
-          lt.unresolvedEtfs.length ? (
-            <MicroLabel className="text-amber">
-              {lt.unresolvedEtfs.length} ETF{lt.unresolvedEtfs.length > 1 ? 's' : ''} unresolved
+          lt.unexplainedPct > 0 ? (
+            <MicroLabel className="text-faint">
+              {fmtPct(lt.unexplainedPct, 0)} inside funds, diversified
             </MicroLabel>
           ) : undefined
         }
@@ -181,12 +181,20 @@ export function LookThroughTab() {
             ))}
           </ul>
         )}
-        {lt.unresolvedEtfs.length > 0 && (
-          <p className="mt-4 text-xs text-faint">
-            Unresolved ETFs ({lt.unresolvedEtfs.join(', ')}) count as opaque single lines until you
-            Refresh ETF holdings (needs an FMP key).
-          </p>
-        )}
+        <p className="mt-4 text-xs leading-relaxed text-faint">
+          These are real companies you hold, counted through your funds. A fund&rsquo;s cached top-10 is
+          only part of it — a whole-market index fund&rsquo;s top ten is about a third — so{' '}
+          <span className="text-muted">{fmtPct(lt.unexplainedPct, 0)} of investable sits in the diversified
+          tail of your funds</span>. That tail is thousands of small positions, so it is deliberately kept out
+          of this ranking: listing it as one line would overstate concentration, not measure it.
+          {lt.unresolvedEtfs.length > 0 && (
+            <>
+              {' '}
+              No composition at all for {lt.unresolvedEtfs.join(', ')} — bond and muni funds have no equity
+              constituents to resolve, so they sit entirely in that tail.
+            </>
+          )}
+        </p>
       </Panel>
 
       <MicroLabel className="text-faint">
