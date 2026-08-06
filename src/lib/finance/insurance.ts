@@ -6,12 +6,13 @@ import type { InsurancePolicy } from '../db'
  * never to recommend a product or amount (invariant #9). Needs are deliberately
  * crude (a planner refines them); the value is surfacing an obvious hole.
  */
-export const INSURANCE_KINDS = ['term_life', 'disability', 'umbrella', 'ltc', 'entity'] as const
+export const INSURANCE_KINDS = ['term_life', 'disability', 'malpractice', 'umbrella', 'ltc', 'entity'] as const
 export type InsuranceKind = (typeof INSURANCE_KINDS)[number]
 
 export const INSURANCE_LABEL: Record<InsuranceKind, string> = {
   term_life: 'Term life',
   disability: 'Disability',
+  malpractice: 'Professional liability',
   umbrella: 'Umbrella liability',
   ltc: 'Long-term care',
   entity: 'Entity / LLC liability',
@@ -26,6 +27,18 @@ export interface InsuranceContext {
   liquidAssets: number
   age: number | null
   hasBusinessOrRental: boolean
+  /**
+   * Assets a liability claim can actually reach, from the asset-protection
+   * engine. When present it replaces net worth as the umbrella need — the two
+   * readouts must never disagree about the same question (invariant #1).
+   */
+  reachableAssets?: number
+  /**
+   * Verdict from the disability engine, which reads benefit adequacy, definition
+   * and tax character rather than mere presence. When present it owns this line
+   * so the summary can never contradict the detail panel (invariant #1).
+   */
+  disabilityStatus?: GapStatus
 }
 
 export interface InsuranceLine {
@@ -70,9 +83,11 @@ export function insuranceGaps(policies: InsurancePolicy[], ctx: InsuranceContext
     })
   }
 
-  // Umbrella — protect the balance sheet against liability claims (≈ net worth).
+  // Umbrella — sized against the assets a claim can actually reach when the
+  // asset-protection engine has sorted them; net worth is the fallback bound.
   {
-    const need = Math.max(0, ctx.netWorth)
+    const sharpened = ctx.reachableAssets != null
+    const need = Math.max(0, sharpened ? ctx.reachableAssets! : ctx.netWorth)
     const coverage = cov('umbrella')
     const gap = Math.max(0, need - coverage)
     lines.push({
@@ -82,11 +97,14 @@ export function insuranceGaps(policies: InsurancePolicy[], ctx: InsuranceContext
       modeledNeed: need,
       gap,
       status: coverage <= 0 ? 'gap' : gap > 0 ? 'gap' : 'covered',
-      note: 'A liability claim can reach assets beyond auto/home limits — umbrella ≈ net worth.',
+      note: sharpened
+        ? 'A liability claim reaches assets beyond auto/home limits — sized against creditor-reachable assets, not net worth.'
+        : 'A liability claim can reach assets beyond auto/home limits — umbrella ≈ net worth.',
     })
   }
 
-  // Disability — income protection while working (presence-based flag).
+  // Disability — income protection while working. The disability engine owns the
+  // verdict when it has run; presence is only the fallback.
   {
     const coverage = cov('disability')
     const working = ctx.age == null || ctx.age < 65
@@ -96,10 +114,26 @@ export function insuranceGaps(policies: InsurancePolicy[], ctx: InsuranceContext
       coverage,
       modeledNeed: 0,
       gap: 0,
-      status: !working ? 'n/a' : coverage > 0 ? 'covered' : 'gap',
+      status: ctx.disabilityStatus ?? (!working ? 'n/a' : coverage > 0 ? 'covered' : 'gap'),
       note: working
         ? 'Protects earned income — the asset that funds everything else.'
         : 'Less critical once you are no longer reliant on earned income.',
+    })
+  }
+
+  // Professional liability — the layer that stands in front of everything else
+  // for a practising professional. Detail lives in the asset-protection readout.
+  {
+    const coverage = cov('malpractice')
+    const working = ctx.age == null || ctx.age < 70
+    lines.push({
+      kind: 'malpractice',
+      label: INSURANCE_LABEL.malpractice,
+      coverage,
+      modeledNeed: 0,
+      gap: 0,
+      status: !working ? 'n/a' : coverage > 0 ? 'covered' : 'gap',
+      note: 'Form (occurrence vs claims-made) and tail matter more than the limit — see the protection readout.',
     })
   }
 

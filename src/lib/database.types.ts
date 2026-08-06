@@ -344,6 +344,7 @@ export type Database = {
           carrier: string | null
           coverage: number | null
           created_at: string
+          details: Json
           id: string
           kind: string | null
           owner: string | null
@@ -355,6 +356,7 @@ export type Database = {
           carrier?: string | null
           coverage?: number | null
           created_at?: string
+          details?: Json
           id?: string
           kind?: string | null
           owner?: string | null
@@ -366,6 +368,7 @@ export type Database = {
           carrier?: string | null
           coverage?: number | null
           created_at?: string
+          details?: Json
           id?: string
           kind?: string | null
           owner?: string | null
@@ -509,6 +512,7 @@ export type Database = {
         Row: {
           created_at: string
           dob: string | null
+          earned_income: number | null
           filing_status: string | null
           inflation_override: number | null
           plan_to_age: number | null
@@ -522,6 +526,7 @@ export type Database = {
         Insert: {
           created_at?: string
           dob?: string | null
+          earned_income?: number | null
           filing_status?: string | null
           inflation_override?: number | null
           plan_to_age?: number | null
@@ -535,6 +540,7 @@ export type Database = {
         Update: {
           created_at?: string
           dob?: string | null
+          earned_income?: number | null
           filing_status?: string | null
           inflation_override?: number | null
           plan_to_age?: number | null

@@ -1,3 +1,30 @@
+# HANDOFF — state as of 2026-08-06
+
+## This session — physician protection readout (P7), built & verified
+Two new pure engines + panels on the **Estate & Protection** tab, filling the one gap the adversarial
+review left explicitly under-built:
+- `src/lib/finance/disability.ts` — own-occupation income protection. Human capital (PV of remaining
+  after-tax earnings, **banded**, #4) + per-policy *terms* reading: own-occ definition tier, benefit tax
+  character (group ⇒ taxable ⇒ discounted at the marginal rate), benefit period vs working horizon, riders.
+  Gap measured against the spending floor **and** full after-tax income; shortfall severity scales with the
+  hole's size, so a near-miss stays calm (#6).
+- `src/lib/finance/assetprotection.ts` — creditor exposure by bucket (ERISA strong · IRA capped · HSA/529/
+  residence state-law · **solo-401(k) depends**, not ERISA · taxable/rental reachable), umbrella sized
+  against *reachable* assets, professional-liability form read (**claims-made + no tail = high flag**).
+- `src/app/estate/PhysicianProtectionPanels.tsx` — presentational; policy-terms editor + earned-income
+  input wired into `EstateProtectionTab`.
+- **Invariant #1:** `insuranceGaps` now consumes `reachableAssets` + `disabilityStatus`, so the summary
+  cannot contradict the detail panel. Tested both directions.
+- **51 tests pass** (24 new), tsc/lint/build green. Both panels render-verified end-to-end against a
+  throwaway stub backend (real engine output; numbers hand-checked).
+
+**⚠ ACTIVATION NEEDED:** `supabase db push` to apply `20260806000000_protection_details.sql` — adds
+`insurance_policies.details` (jsonb, default `{}`) + `profiles.earned_income` (nullable). Both additive and
+idempotent (`add column if not exists`); RLS already owner-only, no policy change. Until it runs, saving
+policy terms or income shows a clear "run the migration" message; everything else degrades cleanly.
+
+---
+
 # HANDOFF — state as of 2026-07-11
 
 ## Where things live now

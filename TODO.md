@@ -85,6 +85,28 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       NIIT + estate exemption already correct. Engine-verified (ordinaryTax/ltcg/irmaa hand-calcs).
 
 ## P7 follow-ups
+- [x] **Physician protection readout** — the two engines a presence-based insurance checklist misses.
+      `disability.ts` (`disabilityView`): human capital = PV of remaining after-tax earnings to retirement,
+      **banded** by discount rate (#4); reads each policy's *terms* rather than its amount — own-occ
+      definition tier (specialty/true/modified/any-occ), benefit tax character (employer-paid ⇒ taxable, so
+      a group benefit is discounted at the marginal rate), benefit period vs the working horizon, residual/
+      COLA/non-cancelable riders — and measures the gap against BOTH the spending floor and full after-tax
+      income. Shortfall severity scales with the size of the hole, not its existence (#6 — a 99%-covered
+      near-miss must not shout). `assetprotection.ts` (`assetProtectionView`): sorts the balance sheet into
+      creditor-exposure tiers by `accounts.tax_type` (ERISA employer plan = strong · IRA = capped · HSA/529/
+      residence = state law · **solo-401(k) = depends**, since an owner-only plan is generally not ERISA ·
+      taxable/rental = reachable), sizes umbrella against *reachable* assets, and reads the professional-
+      liability form (**claims-made with no tail = high flag**, the classic missed exposure) + reachable
+      assets above the per-claim limit. State note is NJ-specific where known, generic otherwise.
+      **Invariant #1 honored:** `insuranceGaps` now takes `reachableAssets` + `disabilityStatus` so the
+      summary line can never contradict the detail panel (tested both ways). Model exposure + flag gaps +
+      prompt counsel; asserts no legal conclusion (#9). New `PhysicianProtectionPanels` (presentational,
+      pure props) + policy-terms editor behind a disclosure + `profiles.earned_income` input.
+      **24 new tests (51 total)**, engine numbers hand-verified, and both panels render-verified end-to-end
+      against a stub backend. **ACTIVATION:** `supabase db push` for migration `20260806000000` (adds
+      `insurance_policies.details` jsonb + `profiles.earned_income`) — degrades with a clear in-UI message
+      until then.
+- [ ] Wire real disability *elimination-period* bridge against the cash buffer (needs the emergency-fund split).
 - [x] **Estate-doc encrypted vault upload** — private `estate-docs` Storage bucket + owner-only RLS
       (migration `20260625210000`, mirrors the `statements` bucket). DocRow in the Estate tab now uploads to
       `<uid>/<doc_type>/<file>`, records `estate_docs.file_ref`, and offers signed-URL **View** / **Remove**

@@ -7,6 +7,12 @@ import { estateExposure } from '../../lib/finance/estate'
 import { liquidityView } from '../../lib/finance/liquidity'
 import { insuranceGaps, INSURANCE_KINDS, INSURANCE_LABEL } from '../../lib/finance/insurance'
 import type { InsuranceKind } from '../../lib/finance/insurance'
+import { disabilityView, OWN_OCC_TIERS, OWN_OCC_LABEL, BENEFIT_TAX_KINDS, BENEFIT_TAX_LABEL } from '../../lib/finance/disability'
+import type { DisabilityDetails } from '../../lib/finance/disability'
+import { assetProtectionView } from '../../lib/finance/assetprotection'
+import type { MalpracticeDetails } from '../../lib/finance/assetprotection'
+import { IncomeProtectionPanel, CreditorExposurePanel } from './PhysicianProtectionPanels'
+import { ordinaryTax, marginalRate, standardDeduction } from '../../lib/finance/taxtables'
 import { buildChecklist, docGapCount, DOC_STATUSES, DOC_STATUS_LABEL } from '../../lib/finance/estatedocs'
 import type { DocStatus, EstateDocState } from '../../lib/finance/estatedocs'
 import { FILING_STATUSES, FILING_LABEL } from '../../lib/db'
@@ -22,7 +28,7 @@ function ageFromDob(dob: string | null | undefined): number | null {
 }
 
 export function EstateProtectionTab() {
-  const { data, loading } = useBalanceSheet()
+  const { data, loading, reload } = useBalanceSheet()
   const { session } = useAuth()
   const [filing, setFiling] = useState<FilingStatus>('single')
   const [filingInited, setFilingInited] = useState(false)
@@ -66,6 +72,31 @@ export function EstateProtectionTab() {
     return sum
   }, [data.accounts, data.holdings, data.quotes])
 
+  const age = ageFromDob(data.profile?.dob)
+  const earnedIncome = data.profile?.earned_income ?? 0
+
+  // Creditor exposure — which dollars a claim can actually reach. Feeds the
+  // umbrella line below so the two readouts can never disagree (invariant #1).
+  const protection = useMemo(
+    () => assetProtectionView(data.holdings, data.accounts, data.realEstate, data.quotes, policies, data.profile?.state ?? null),
+    [data.holdings, data.accounts, data.realEstate, data.quotes, policies, data.profile],
+  )
+
+  // Own-occupation income protection. Tax rates come from the same tables the
+  // Tax tab uses (invariant #1); federal ordinary only — see the note in-panel.
+  const disability = useMemo(() => {
+    const taxable = Math.max(0, earnedIncome - standardDeduction(filing, taxParams))
+    const fed = ordinaryTax(taxable, filing, taxParams)
+    return disabilityView(policies, {
+      annualEarnedIncome: earnedIncome,
+      effectiveTaxRate: earnedIncome > 0 ? fed / earnedIncome : 0,
+      marginalRate: marginalRate(taxable, filing, taxParams),
+      annualSpending: data.spending?.annual_amount ?? 0,
+      age,
+      retireAge: data.profile?.retire_age ?? 65,
+    })
+  }, [policies, earnedIncome, filing, taxParams, data.spending, age, data.profile])
+
   const insuranceLines = useMemo(() => {
     const hasBusinessOrRental =
       data.holdings.some((h) => h.kind === 'private') || data.realEstate.some((p) => p.kind === 'investment')
@@ -74,10 +105,12 @@ export function EstateProtectionTab() {
       liabilities: bs.totalLiabilities,
       annualSpending: data.spending?.annual_amount ?? 0,
       liquidAssets: liquidity.liquidAssets,
-      age: ageFromDob(data.profile?.dob),
+      age,
       hasBusinessOrRental,
+      reachableAssets: protection.reachable,
+      disabilityStatus: disability.status,
     })
-  }, [policies, bs.netWorth, bs.totalLiabilities, data.spending, data.holdings, data.realEstate, data.profile, liquidity.liquidAssets])
+  }, [policies, bs.netWorth, bs.totalLiabilities, data.spending, data.holdings, data.realEstate, age, liquidity.liquidAssets, protection.reachable, disability.status])
 
   const checklist = useMemo(() => {
     const byType: Record<string, EstateDocState> = {}
@@ -112,6 +145,15 @@ export function EstateProtectionTab() {
         </Panel>
       ) : (
         <>
+          <IncomeProtectionPanel view={disability} hasIncome={earnedIncome > 0} />
+          <EarnedIncomeCard
+            value={data.profile?.earned_income ?? null}
+            userId={session?.user.id}
+            filingLabel={FILING_LABEL[filing]}
+            onSaved={reload}
+          />
+          <CreditorExposurePanel view={protection} />
+
           <ProtectionPanels
             exposure={exposure}
             filingLabel={FILING_LABEL[filing]}
@@ -169,6 +211,61 @@ export function EstateProtectionTab() {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * Gross earned income — the input the income-protection readout is built on, and
+ * the one the app holds nowhere else. Persists to `profiles.earned_income`.
+ * Degrades with a clear message if the migration has not been applied yet.
+ */
+function EarnedIncomeCard({
+  value, userId, filingLabel, onSaved,
+}: {
+  value: number | null; userId: string | undefined; filingLabel: string; onSaved: () => void
+}) {
+  const [income, setIncome] = useState(value != null ? String(value) : '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const dirty = (income ? Number(income) : null) !== value
+
+  const save = async () => {
+    if (!userId) return
+    setBusy(true)
+    setErr(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ earned_income: income ? Number(income) : null })
+      .eq('user_id', userId)
+    setBusy(false)
+    if (error) {
+      setErr(
+        /earned_income/.test(error.message)
+          ? 'Needs the protection-details migration — run `supabase db push`, then this saves.'
+          : error.message,
+      )
+      return
+    }
+    onSaved()
+  }
+
+  return (
+    <Panel label="Income — the asset being insured">
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_auto]">
+        <Field label="Gross annual earned income" hint="salary + bonus + production, before tax">
+          <Input type="number" value={income} onChange={(e) => setIncome(e.target.value)} placeholder="0" />
+        </Field>
+        <div className="pb-1.5">
+          <Button onClick={save} disabled={busy || !dirty || !userId}>{busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}</Button>
+        </div>
+      </div>
+      {err && <p className="mt-2 text-xs text-coral">{err}</p>}
+      <p className="mt-3 text-xs leading-relaxed text-faint">
+        After-tax income is computed with the same federal tables the Tax tab uses ({filingLabel}, ordinary income
+        only). State and payroll tax are not modeled, so after-tax income here reads slightly high — which makes the
+        at-risk figure and the replacement gap, if anything, conservative rather than reassuring.
+      </p>
+    </Panel>
   )
 }
 
@@ -300,19 +397,40 @@ function DocRow({
   )
 }
 
+/** Terms bag as stored on `insurance_policies.details`. */
+type PolicyDetails = DisabilityDetails & MalpracticeDetails
+
+function readDetails(p: InsurancePolicy): PolicyDetails {
+  const d = (p as { details?: unknown }).details
+  return d && typeof d === 'object' && !Array.isArray(d) ? (d as PolicyDetails) : {}
+}
+
 function PolicyRow({ policy, onChanged }: { policy: InsurancePolicy; onChanged: () => void }) {
   const [kind, setKind] = useState<InsuranceKind>(policy.kind as InsuranceKind)
   const [carrier, setCarrier] = useState(policy.carrier ?? '')
   const [coverage, setCoverage] = useState(policy.coverage != null ? String(policy.coverage) : '')
   const [premium, setPremium] = useState(policy.premium != null ? String(policy.premium) : '')
+  const [details, setDetails] = useState<PolicyDetails>(() => readDetails(policy))
+  const [openTerms, setOpenTerms] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  const savedDetails = readDetails(policy)
+  const hasTerms = kind === 'disability' || kind === 'malpractice'
   const dirty =
     kind !== policy.kind ||
     (carrier || '') !== (policy.carrier ?? '') ||
     (coverage ? Number(coverage) : null) !== (policy.coverage ?? null) ||
-    (premium ? Number(premium) : null) !== (policy.premium ?? null)
+    (premium ? Number(premium) : null) !== (policy.premium ?? null) ||
+    JSON.stringify(details) !== JSON.stringify(savedDetails)
+
+  const set = <K extends keyof PolicyDetails>(k: K, v: PolicyDetails[K]) =>
+    setDetails((d) => {
+      const next = { ...d }
+      if (v === undefined) delete next[k]
+      else next[k] = v
+      return next
+    })
 
   const save = async () => {
     setBusy(true)
@@ -324,11 +442,17 @@ function PolicyRow({ policy, onChanged }: { policy: InsurancePolicy; onChanged: 
         carrier: carrier || null,
         coverage: coverage ? Number(coverage) : null,
         premium: premium ? Number(premium) : null,
+        // Plain JSON-safe bag; the engines own its shape (see the migration note).
+        details: details as Record<string, string | number | boolean>,
       })
       .eq('id', policy.id)
     setBusy(false)
     if (error) {
-      setErr(error.message)
+      setErr(
+        /details/.test(error.message)
+          ? 'Policy terms need the protection-details migration — run `supabase db push`, then this saves.'
+          : error.message,
+      )
       return
     }
     onChanged()
@@ -354,7 +478,7 @@ function PolicyRow({ policy, onChanged }: { policy: InsurancePolicy; onChanged: 
         <Field label="Carrier">
           <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Carrier" />
         </Field>
-        <Field label="Coverage">
+        <Field label={kind === 'disability' ? 'Benefit / mo' : 'Coverage'}>
           <Input type="number" value={coverage} onChange={(e) => setCoverage(e.target.value)} placeholder="0" />
         </Field>
         <Field label="Premium/yr">
@@ -374,8 +498,132 @@ function PolicyRow({ policy, onChanged }: { policy: InsurancePolicy; onChanged: 
           </button>
         </div>
       </div>
+
+      {/* Terms — the fields that decide whether a policy actually pays. Behind a
+          disclosure so the common case stays calm (progressive disclosure, §6). */}
+      {hasTerms && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setOpenTerms((o) => !o)}
+            className="micro-label text-faint transition-colors hover:text-muted"
+          >
+            {openTerms ? '▾' : '▸'} Policy terms
+            {!openTerms && Object.keys(details).length === 0 && (
+              <span className="ml-2 text-amber">not recorded</span>
+            )}
+          </button>
+
+          {openTerms && kind === 'disability' && (
+            <div className="mt-2 grid grid-cols-2 gap-3 rounded-[var(--radius-panel)] border border-line p-3 sm:grid-cols-3">
+              <Field label="Definition">
+                <Select
+                  value={details.own_occ ?? ''}
+                  onChange={(e) => set('own_occ', (e.target.value || undefined) as DisabilityDetails['own_occ'])}
+                >
+                  <option value="">Not recorded</option>
+                  {OWN_OCC_TIERS.filter((t) => t !== 'unknown').map((t) => (
+                    <option key={t} value={t}>{OWN_OCC_LABEL[t]}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Benefit tax">
+                <Select
+                  value={details.benefit_tax ?? ''}
+                  onChange={(e) => set('benefit_tax', (e.target.value || undefined) as DisabilityDetails['benefit_tax'])}
+                >
+                  <option value="">Not recorded</option>
+                  {BENEFIT_TAX_KINDS.filter((t) => t !== 'unknown').map((t) => (
+                    <option key={t} value={t}>{BENEFIT_TAX_LABEL[t]}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Benefits to age" hint="e.g. 65">
+                <Input
+                  type="number"
+                  value={details.benefit_to_age ?? ''}
+                  onChange={(e) => set('benefit_to_age', e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="—"
+                />
+              </Field>
+              <Field label="Elimination (days)">
+                <Input
+                  type="number"
+                  value={details.elimination_days ?? ''}
+                  onChange={(e) => set('elimination_days', e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="—"
+                />
+              </Field>
+              <div className="col-span-2 flex flex-wrap items-center gap-4 pb-1.5 sm:col-span-3">
+                <Check label="Employer group" checked={details.group === true} onChange={(v) => set('group', v || undefined)} />
+                <Check label="Residual rider" checked={details.residual === true} onChange={(v) => set('residual', v)} />
+                <Check label="COLA rider" checked={details.cola === true} onChange={(v) => set('cola', v)} />
+                <Check label="Non-cancelable" checked={details.non_cancelable === true} onChange={(v) => set('non_cancelable', v || undefined)} />
+              </div>
+            </div>
+          )}
+
+          {openTerms && kind === 'malpractice' && (
+            <div className="mt-2 grid grid-cols-2 gap-3 rounded-[var(--radius-panel)] border border-line p-3 sm:grid-cols-3">
+              <Field label="Policy form">
+                <Select
+                  value={details.form ?? ''}
+                  onChange={(e) => set('form', (e.target.value || undefined) as MalpracticeDetails['form'])}
+                >
+                  <option value="">Not recorded</option>
+                  <option value="occurrence">Occurrence</option>
+                  <option value="claims_made">Claims-made</option>
+                </Select>
+              </Field>
+              <Field label="Per claim">
+                <Input
+                  type="number"
+                  value={details.per_claim ?? ''}
+                  onChange={(e) => set('per_claim', e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Aggregate">
+                <Input
+                  type="number"
+                  value={details.aggregate ?? ''}
+                  onChange={(e) => set('aggregate', e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="0"
+                />
+              </Field>
+              <div className="col-span-2 flex flex-wrap items-center gap-4 pb-1.5 sm:col-span-3">
+                <Check
+                  label="Tail (ERP) secured"
+                  checked={details.tail_secured === true}
+                  onChange={(v) => set('tail_secured', v)}
+                />
+                <Check
+                  label="Employer-provided"
+                  checked={details.employer_provided === true}
+                  onChange={(v) => set('employer_provided', v || undefined)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {err && <p className="mt-1 text-xs text-coral">{err}</p>}
     </li>
+  )
+}
+
+function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="size-3.5 accent-teal"
+      />
+      {label}
+    </label>
   )
 }
 
