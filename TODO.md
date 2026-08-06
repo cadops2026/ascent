@@ -103,9 +103,9 @@ This is the actionable checklist. Build discipline: one phase at a time, verify,
       prompt counsel; asserts no legal conclusion (#9). New `PhysicianProtectionPanels` (presentational,
       pure props) + policy-terms editor behind a disclosure + `profiles.earned_income` input.
       **24 new tests (51 total)**, engine numbers hand-verified, and both panels render-verified end-to-end
-      against a stub backend. **ACTIVATION:** `supabase db push` for migration `20260806000000` (adds
-      `insurance_policies.details` jsonb + `profiles.earned_income`) — degrades with a clear in-UI message
-      until then.
+      against a stub backend. **ACTIVATED 2026-08-06** — `supabase db push` applied migration
+      `20260806000000` (adds `insurance_policies.details` jsonb + `profiles.earned_income`); migration list
+      shows Local == Remote and a REST probe confirms both columns live. Nothing dormant.
 - [ ] Wire real disability *elimination-period* bridge against the cash buffer (needs the emergency-fund split).
 - [x] **Estate-doc encrypted vault upload** — private `estate-docs` Storage bucket + owner-only RLS
       (migration `20260625210000`, mirrors the `statements` bucket). DocRow in the Estate tab now uploads to

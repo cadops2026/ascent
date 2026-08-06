@@ -18,10 +18,12 @@ review left explicitly under-built:
 - **51 tests pass** (24 new), tsc/lint/build green. Both panels render-verified end-to-end against a
   throwaway stub backend (real engine output; numbers hand-checked).
 
-**⚠ ACTIVATION NEEDED:** `supabase db push` to apply `20260806000000_protection_details.sql` — adds
+**ACTIVATED (2026-08-06):** `supabase db push` applied `20260806000000_protection_details.sql` — adds
 `insurance_policies.details` (jsonb, default `{}`) + `profiles.earned_income` (nullable). Both additive and
-idempotent (`add column if not exists`); RLS already owner-only, no policy change. Until it runs, saving
-policy terms or income shows a clear "run the migration" message; everything else degrades cleanly.
+idempotent (`add column if not exists`); RLS already owner-only, so no policy change was needed.
+`supabase migration list` shows Local == Remote through `20260806000000`, and an anon-key REST probe on
+both columns returns `200 []` (column present, RLS correctly yielding no rows). **Nothing is dormant —
+policy terms and earned income save for real.**
 
 ---
 
