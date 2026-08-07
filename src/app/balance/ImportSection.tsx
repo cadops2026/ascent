@@ -39,6 +39,8 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
   const [uploading, setUploading] = useState(false)
   const [excluded, setExcluded] = useState<Record<string, Set<number>>>({})
   const [commitNotes, setCommitNotes] = useState<Record<string, string>>({})
+  const [committing, setCommitting] = useState<string | null>(null)
+  const committingRef = useRef(false) // synchronous guard — state updates lag a tick
   const folderRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -147,7 +149,23 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
       return { ...prev, [importId]: set }
     })
 
+  // One commit at a time. Concurrent commits each read the pre-insert state, so the
+  // seen-set dedup below can't stop a double-click on "Import" — three racing commits
+  // once created three identical accounts. The lock closes the concurrent path; the
+  // seen-set handles the sequential one.
   const commit = async (imp: StatementImport) => {
+    if (committingRef.current) return
+    committingRef.current = true
+    setCommitting(imp.id)
+    try {
+      await commitInner(imp)
+    } finally {
+      committingRef.current = false
+      setCommitting(null)
+    }
+  }
+
+  const commitInner = async (imp: StatementImport) => {
     const cands = (imp.candidates as unknown as ImportCandidate[]) ?? []
     const ex = excluded[imp.id] ?? new Set<number>()
     const summary = imp.summary as Summary
@@ -339,8 +357,9 @@ export function ImportSection({ userId, reload }: { userId: string; reload: () =
                 <Review
                   imp={imp}
                   excluded={excluded[imp.id] ?? new Set()}
+                  busy={committing === imp.id}
                   onToggle={(idx) => toggle(imp.id, idx)}
-                  onCommit={() => commit(imp)}
+                  onCommit={() => void commit(imp)}
                   onDismiss={() => setStatus(imp, 'dismissed')}
                 />
               )}
@@ -468,12 +487,14 @@ function ImportHeader({
 function Review({
   imp,
   excluded,
+  busy,
   onToggle,
   onCommit,
   onDismiss,
 }: {
   imp: StatementImport
   excluded: Set<number>
+  busy: boolean
   onToggle: (idx: number) => void
   onCommit: () => void
   onDismiss: () => void
@@ -507,10 +528,10 @@ function Review({
         })}
       </ul>
       <div className="mt-3 flex gap-2">
-        <Button onClick={onCommit} disabled={included === 0}>
-          Import {included} {included === 1 ? 'row' : 'rows'}
+        <Button onClick={onCommit} disabled={included === 0 || busy}>
+          {busy ? 'Importing…' : `Import ${included} ${included === 1 ? 'row' : 'rows'}`}
         </Button>
-        <Button variant="ghost" onClick={onDismiss}>
+        <Button variant="ghost" onClick={onDismiss} disabled={busy}>
           Discard
         </Button>
       </div>

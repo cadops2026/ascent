@@ -1,3 +1,32 @@
+# HANDOFF — state as of 2026-08-07 (later session: TLH duplicates)
+
+## TLH panel showed every losing position 3× — root cause + fix
+- **Data:** the live DB holds the same E*TRADE statement **three times** — accounts
+  `e3acee9a` / `7578eca4` / `2da855e4`, identical holdings to the fractional share, created
+  ~1s apart on 2026-06-28 16:01:50–52Z. That's **$468,370 of phantom taxable value**; the TLH
+  panel ranked NIO/PLTR/BABA/CEG/CRSP/NCLH/DOGP 3× each (COIN 2× — one copy skipped it) and
+  claimed $125,694 harvestable vs the true $46,102. Also a stale POL row (amount-mode $1,874.97
+  snapshot of the same 26,501 POL the shares-mode row prices live).
+- **Why:** rows were committed 11:57–12:01 EDT with the PRE-dedup importer — the seen-set dedup
+  commit `97e4867` landed 12:40, ~40min later, during the same stuck-parsing incident.
+- **Fix shipped (code):** `ImportSection.commit` now takes a **synchronous ref lock** (+
+  "Importing…" disabled button). Concurrent commits each read pre-insert state, so the seen-set
+  alone can't stop a double-click; the ref closes the same-tick stale-closure case React state
+  can't. Verified against a stub backend: same-tick double-fire → exactly 1 account POST,
+  2 holding POSTs, 1 PATCH (was 2/4/2-shaped before).
+- **Data cleanup: PENDING USER AUTHORIZATION** (auto-mode classifier correctly blocks live-DB
+  deletes). Plan: delete accounts `7578eca4-7083-434f-8dc3-b24c55c5393e` +
+  `2da855e4-a63a-4220-825b-387be942d842` (holdings cascade, 41 rows; copy1 `e3acee9a` is a
+  strict superset of both) + holding `4f1b89f0-f256-4ac4-b9b1-9077e6a67521` (POL amount row).
+  **Full-table backups first:** `Ascent DOCS/db-backups/{holdings,accounts}-2026-08-07.json`
+  (gitignored). Expect 122→80 holdings, 13→11 accounts; net worth −$468k (was overstated).
+- **Open question for the user:** two "Vanguard Cash Plus (Bank Sweep)" amount rows —
+  $421,916.22 (batch 1, acct `d0dbf47a`) vs $607,614.86 (batch 2, acct `6138797a`). Same sweep
+  account on two statement dates (⇒ delete the older, −$421,916) or two real accounts (keep both)?
+  Not decidable from data; left untouched.
+- 529s ×3 (different share counts), Vanguard roth vs taxable, TIAA multi-source rows: **legit,
+  untouched.** No other exact duplicates anywhere (scanned all 122 rows).
+
 # HANDOFF — state as of 2026-08-07
 
 ## Live and working
