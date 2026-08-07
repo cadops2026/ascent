@@ -1,3 +1,65 @@
+# HANDOFF — state as of 2026-08-07
+
+## Live and working
+- **App:** https://ascent-cadops1.vercel.app — password sign-in, serving current code.
+- **Repo:** `github.com/cadops2026/ascent` (PUBLIC — required to deploy on Vercel's free tier
+  without Pro; verified no secrets or personal documents in any of the 58 commits).
+- **Vercel:** project `ascent` on team `cadops1`. Deploy with `npx vercel deploy --prod --yes`.
+- **Supabase:** `rhpdjuigivbwfvzoljsa` ("Ascent Financial", org `Ascent`). Kept deliberately — it
+  holds all data. Separate ORG from Jamzli's, so quota/billing are independent (Supabase bills per
+  organization, confirmed in their billing docs). Not commingled.
+- **Keepalive ×2:** GitHub Action (6-hourly) + a local cron `15 9 */3 * *` →
+  `~/.ascent-keepalive.sh`, logging to `~/.ascent-keepalive.log`. Both verified HTTP 200.
+  NOTE: on a PUBLIC repo GitHub disables scheduled workflows after 60 days of repo inactivity.
+
+## ⚠️ Read this before debugging deploys again
+Three wrong diagnoses cost most of 2026-08-06. The truth, in order:
+1. Vercel was **never** failing to build and the Git connection was **never** broken. It was
+   receiving pushes, creating deployments, and **blocking** them: *"the commit email
+   yhr9txwf7d@privaterelay.appleid.com could not be matched to a GitHub account."* An Apple
+   private-relay address resolves to no GitHub user. Commit identity is now
+   `cadops2026 <313970716+cadops2026@users.noreply.github.com>` — a noreply address always resolves.
+   **If the repo ever moves accounts, regenerate that noreply for the new account.**
+2. A "Blocked" deployment states its reason on the deployment page. Read it before theorising.
+3. `git push` can fail with *"denied to Jamzli"* even when `gh` shows cadops2026 active — the macOS
+   keychain hands git a stale token. Fix: `gh auth switch --user cadops2026 && gh auth setup-git`.
+
+## Gotchas that cost real time
+- **Two Supabase accounts exist.** The browser was signed into one owning `ysbviyagzmdiertnrvzy`
+  (empty); the CLI owns Ascent Financial. A `service_role` key from the wrong project returns 401
+  forever. `supabase projects api-keys --project-ref rhpdjuigivbwfvzoljsa` avoids the browser entirely.
+- **Built-in auth email is capped at 2/hour project-wide** and cannot be raised without custom SMTP.
+  That is why password login now exists — it needs no email.
+- **`supabase config push` prompts `[Y/n]` and a non-interactive shell's EOF takes the default YES**,
+  pushing the WHOLE config.toml. It once overwrote live `max_frequency`/`otp_length` with stock
+  defaults. Always diff first; `config.toml` is local-dev boilerplate, not a mirror of live.
+- **Old dead URLs:** `ascent-umber.vercel.app` / `ascent-ascentfin.vercel.app` still serve the July
+  build with magic-link-only sign-in. Delete that old `ascentfin` Vercel project.
+
+## Built 2026-08-06
+- **Physician protection readout (P7)** — `disability.ts` (banded human capital; reads own-occ tier,
+  benefit tax character, benefit period, riders) + `assetprotection.ts` (creditor tiers; solo-401(k)
+  is 'depends', not ERISA; umbrella sized vs *reachable* assets; claims-made-without-tail = high flag).
+  `insuranceGaps` consumes `reachableAssets` + `disabilityStatus` so summary and detail cannot
+  contradict (invariant #1). Migration `20260806000000` APPLIED.
+- **Auth** — email+password primary, magic link kept as fallback; in-app change password in Settings.
+- **Look-through fix** — a fund's tail beyond its cached top-10 (VTSAX 34.6% covered, so ~65% tail)
+  was ranked as one synthetic single name, and fully-opaque funds were added whole. Both overstated
+  concentration and polluted the Dashboard hero + alert engine. Now `LookThrough.unexplained` /
+  `unexplainedPct`: counted, reported, never ranked. Real portfolio: largest single name went from a
+  fund artifact to Apple 6.3%; 38.4% correctly shown as diversified fund tail. Mirrored into the
+  vendored Deno copy.
+- **55 tests pass**, tsc/lint/build green.
+
+## Open
+- Delete the old `ascentfin` Vercel project once the new one is trusted.
+- Data-less funds (USO, VNJUX, JP Morgan Mid Cap, Invesco Main St Sm Cap, Vanguard Target 2050) have
+  no equity constituents to resolve; they sit in the tail. Fuller constituent data needs a paid source
+  and would not change any decision.
+- Optional: separate the Supabase *login* (cosmetic — orgs are already independent).
+
+---
+
 # HANDOFF — state as of 2026-08-06
 
 ## This session — physician protection readout (P7), built & verified
