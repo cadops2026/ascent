@@ -7,6 +7,7 @@ export type TabId =
   | 'tax'
   | 'risk'
   | 'estate'
+  | 'weir'
   | 'settings'
 
 export interface TabDef {
@@ -76,6 +77,13 @@ export const TABS: TabDef[] = [
     phase: 'P7',
     live: true,
     blurb: 'Estate-tax exposure, doc checklist + vault, insurance-gap readout, liquidity/SBLOC, 529s.',
+  },
+  {
+    id: 'weir',
+    label: 'WEIR',
+    phase: '—',
+    live: true,
+    blurb: 'Framed read-only research instrument (separate app + login); it proposes, adoption stays manual.',
   },
   {
     id: 'settings',
