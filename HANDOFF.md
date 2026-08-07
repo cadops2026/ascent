@@ -14,16 +14,15 @@
   alone can't stop a double-click; the ref closes the same-tick stale-closure case React state
   can't. Verified against a stub backend: same-tick double-fire → exactly 1 account POST,
   2 holding POSTs, 1 PATCH (was 2/4/2-shaped before).
-- **Data cleanup: PENDING USER AUTHORIZATION** (auto-mode classifier correctly blocks live-DB
-  deletes). Plan: delete accounts `7578eca4-7083-434f-8dc3-b24c55c5393e` +
-  `2da855e4-a63a-4220-825b-387be942d842` (holdings cascade, 41 rows; copy1 `e3acee9a` is a
-  strict superset of both) + holding `4f1b89f0-f256-4ac4-b9b1-9077e6a67521` (POL amount row).
-  **Full-table backups first:** `Ascent DOCS/db-backups/{holdings,accounts}-2026-08-07.json`
-  (gitignored). Expect 122→80 holdings, 13→11 accounts; net worth −$468k (was overstated).
-- **Open question for the user:** two "Vanguard Cash Plus (Bank Sweep)" amount rows —
-  $421,916.22 (batch 1, acct `d0dbf47a`) vs $607,614.86 (batch 2, acct `6138797a`). Same sweep
-  account on two statement dates (⇒ delete the older, −$421,916) or two real accounts (keep both)?
-  Not decidable from data; left untouched.
+- **Data cleanup: DONE (2026-08-07, user-authorized in-session).** Deleted accounts
+  `7578eca4` + `2da855e4` (holdings cascaded, 41 rows; kept copy `e3acee9a` was a strict
+  superset of both) + holding `4f1b89f0` (POL amount row). Verified live: 122→80 holdings,
+  13→11 accounts, 1 E*TRADE account; TLH engine on live data returns exactly 9 positions /
+  $46,102. Net worth correctly dropped ~$470k (was phantom). **Full-table pre-delete backups:**
+  `Ascent DOCS/db-backups/{holdings,accounts}-2026-08-07.json` (gitignored) — restorable by
+  re-inserting those rows.
+- **Vanguard Cash Plus ×2 resolved:** user confirmed these are **two real accounts**
+  ($421,916.22 in `d0dbf47a`, $607,614.86 in `6138797a`) — both kept, not duplicates.
 - 529s ×3 (different share counts), Vanguard roth vs taxable, TIAA multi-source rows: **legit,
   untouched.** No other exact duplicates anywhere (scanned all 122 rows).
 
