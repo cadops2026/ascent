@@ -13,8 +13,10 @@ import { Wordmark } from '../app/Wordmark'
  * way in. Calm, single-purpose, one accent (design system §6).
  */
 
-type Mode = 'password' | 'link'
+type Mode = 'password' | 'register' | 'link'
 type Status = 'idle' | 'working' | 'sent' | 'error'
+
+const MIN_PASSWORD = 8
 
 export function SignIn() {
   const [mode, setMode] = useState<Mode>('password')
@@ -49,6 +51,29 @@ export function SignIn() {
         setStatus('error')
       } else {
         setStatus('sent')
+      }
+      return
+    }
+
+    if (mode === 'register') {
+      if (password.length < MIN_PASSWORD) {
+        setError(`Use at least ${MIN_PASSWORD} characters.`)
+        setStatus('error')
+        return
+      }
+      const { data, error } = await supabase.auth.signUp({ email: addr, password })
+      if (error) {
+        setError(error.message)
+        setStatus('error')
+        return
+      }
+      // With email confirmations ON (the hosted default) signUp returns a user
+      // but no session — the account is not usable until the link is opened.
+      if (data.session) {
+        setStatus('idle') // onAuthStateChange swaps this screen out
+      } else {
+        setStatus('sent')
+        setNotice('Account created. Confirm it from the email we just sent, then sign in with your password.')
       }
       return
     }
@@ -122,10 +147,10 @@ export function SignIn() {
                   id="password"
                   type="password"
                   required
-                  autoComplete="current-password"
+                  autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={mode === 'register' ? `at least ${MIN_PASSWORD} characters` : '••••••••'}
                   className="mb-4 w-full rounded-lg border border-line bg-panel-hi px-3 py-2.5 font-mono text-sm text-ink outline-none placeholder:text-faint focus:border-teal/60"
                 />
               </>
@@ -136,7 +161,13 @@ export function SignIn() {
               disabled={busy}
               className="w-full rounded-lg bg-teal/15 px-3 py-2.5 text-sm font-medium text-teal transition-colors hover:bg-teal/25 disabled:opacity-50"
             >
-              {busy ? 'Working…' : mode === 'link' ? 'Send magic link' : 'Sign in'}
+              {busy
+                ? 'Working…'
+                : mode === 'register'
+                  ? 'Create account'
+                  : mode === 'link'
+                    ? 'Send magic link'
+                    : 'Sign in'}
             </button>
 
             {error && <p className="mt-3 text-sm leading-relaxed text-coral">{error}</p>}
@@ -147,15 +178,17 @@ export function SignIn() {
                   Sign in with password
                 </button>
               )}
+              {mode !== 'register' && (
+                <button type="button" onClick={() => reset('register')} className="micro-label text-faint transition-colors hover:text-muted">
+                  Create account
+                </button>
+              )}
               {mode !== 'link' && (
                 <button type="button" onClick={() => reset('link')} className="micro-label text-faint transition-colors hover:text-muted">
                   Email me a link
                 </button>
               )}
             </div>
-            <p className="mt-3 text-center text-xs text-faint">
-              Access is by invitation. There is no public sign-up.
-            </p>
           </form>
         )}
       </div>
