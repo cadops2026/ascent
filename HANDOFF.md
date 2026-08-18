@@ -1,3 +1,78 @@
+# HANDOFF — state as of 2026-08-17 (live pricing + alpha meter)
+
+## 1. Prices now refresh app-wide, not just on the Balance Sheet
+- **Was:** the only auto-refresh lived in `BalanceSheet.tsx` and fired only when a holding had
+  **no price at all**. Once everything had been priced once, it never fired again — prices only
+  moved if you clicked "Refresh quotes". The other 7 tabs read `quote_cache` but never triggered a
+  fetch, so landing on the Dashboard showed whatever was last cached, however old.
+- **Now:** `src/lib/finance/quotes.ts` is the single price-refresh path (invariant #1) — symbol
+  collection (equities / crypto / money-market NAV tickers / 529 basket legs), the vendor calls, the
+  staleness test, and the once-per-TTL guard. `useBalanceSheet` drives it, so **any** tab that loads
+  the balance sheet re-prices stale holdings. Trigger is **staleness** (`quote_cache.updated_at`
+  older than the 15-min TTL), not "unpriced". Server-side TTL makes repeat calls cheap no-ops;
+  failures are silent and leave cached prices in place (#6).
+- `BalanceSheet.tsx` lost its duplicated symbol-collection logic; its remaining mount effect only
+  repairs name-only imported funds (sets a ticker from the alias map) — a data fix, not pricing.
+- New `PricesAsOf` component on Dashboard + Balance Sheet shows the **oldest** quote backing the
+  current holdings (an honest floor: "everything here is at least this current"), amber past 4× TTL.
+  A timestamp, never a red/green delta (#6).
+
+## 2. Alpha meter — realized, class-relative, since purchase
+Owner decisions (2026-08-17): benchmark **each holding against its own asset class**; measure
+**since purchase**.
+
+- `src/lib/finance/alpha.ts` (pure, 8 tests): per-**tax-lot** annualized return (cost basis vs
+  today's price) minus what that holding's own class returned over the same window, dollar-weighted
+  into a portfolio figure. Per-lot rather than an average purchase date, so multi-lot positions are
+  exact. Benchmarks: us_equity→VTI, intl→VXUS, bonds→BND, tips→SCHP, cash→BIL, real_estate→VNQ,
+  commodities→DJP, crypto→BTC-USD. **private_equity + collectibles map to null** — excluded with a
+  visible reason rather than measured against something wrong.
+- **Every alpha carries a noise band (#4).** SE = assumed tracking error ÷ √years, where TE is a
+  multiple of the class's own vol (0.35× funds, 1.0× single names — `TE_MULTIPLE`, documented and in
+  one place). A holding is only called ahead/behind once it clears 1.65 SE (~90%). Most land in
+  `noise`, which is the truthful answer and is deliberately rendered in **ink, not coral** — an
+  alpha inside its own error bars is not bad news.
+- Positions held under `MIN_YEARS` (3mo) are excluded: annualizing a few weeks produces a headline
+  number that means nothing. Same for missing basis/purchase date. Excluded value + reasons are
+  shown, and `coverage` reports what fraction of holdings the number actually covers.
+- **This measures, it never forecasts (#5).** The underperformer list ships with the context that
+  trailing returns don't predict the next stretch and a sale has a tax bill attached.
+- **Known limit, stated in the UI:** returns are price-only (neither side counts dividends), so a
+  holding yielding much more than its benchmark reads low. And because each holding is judged
+  against its own class, this measures *selection* only — it says nothing about the allocation.
+
+### Schema + Edge Function — NOT YET DEPLOYED
+- `supabase/migrations/20260817000000_price_history.sql` — new `price_history(symbol, on_date,
+  close)`, shared-reference RLS (authenticated read; service_role writes), idempotent.
+- `supabase/functions/refresh-history/` — daily benchmark closes from the keyless Yahoo chart
+  endpoint, incremental (only fetches forward of stored coverage, backfills when an older lot
+  appears). Uses `quote[0].close` (split-adjusted, **not** `adjclose`) so both sides of the alpha
+  subtraction are price-only. Endpoint shape verified live: 752 daily rows, no nulls.
+- **ACTIVATED (2026-08-18):** `supabase db push` applied `20260817000000` (`supabase migration list`
+  now shows Local == Remote through it) and `supabase functions deploy refresh-history` shipped the
+  function (ACTIVE, v1; no other function touched). Live checks: anon SELECT on `price_history`
+  returns `200 []` and anon INSERT is rejected `42501` "violates row-level security" — read policy is
+  authenticated-only, writes are service_role-only, exactly as intended. Function verified end-to-end
+  against the real Yahoo endpoint: backfill works, an unknown ticker returns `{updated:0,
+  missing:[...]}` rather than crashing, and a repeat call re-checks only the 7-day pad.
+- **Benchmark cache warmed (2026-08-18):** 10 years of daily closes for all eight benchmarks —
+  VTI/VXUS/BND/SCHP/BIL/VNQ/DJP at 2,674 rows each (trading days) and BTC-USD at 3,889 (calendar
+  days; crypto trades weekends). So the meter has history on first load rather than backfilling live.
+- **What still gates the meter lighting up:** alpha needs a **tax lot with `acquired_on`** per
+  position. Imported statement holdings carry `cost_basis` but no purchase date, so any holding
+  without a lot shows under "Not measured · no purchase date". Add lots via the Tax Lots editor on
+  the Balance Sheet to bring positions into coverage.
+- `src/lib/database.types.ts` had `price_history` added by hand (no gen script in this repo).
+
+### Verification
+63 tests pass (8 new, hand-checked: ARKK −26.0% = 0.5^0.25−1 minus VTI's 10.10% CAGR; bands
+±4.6% / ±57.7% / ±13.2% = 1.65 × TE ÷ √4 exactly), tsc + build green. Rendered end-to-end against a
+throwaway stub backend with a synthetic 8-holding portfolio covering every path — ahead, behind,
+noise, and all three exclusion reasons. Crypto's ±57.7% band correctly swallowed BTC's −11.4% gap
+(the calm design working as intended). Live project never touched.
+
+---
+
 # HANDOFF — state as of 2026-08-07 (later session: TLH duplicates)
 
 ## TLH panel showed every losing position 3× — root cause + fix

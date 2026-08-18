@@ -508,6 +508,24 @@ export type Database = {
         }
         Relationships: []
       }
+      price_history: {
+        Row: {
+          close: number
+          on_date: string
+          symbol: string
+        }
+        Insert: {
+          close: number
+          on_date: string
+          symbol: string
+        }
+        Update: {
+          close?: number
+          on_date?: string
+          symbol?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Panel, Figure, MicroLabel } from '../../components/ui'
+import { Panel, Figure, MicroLabel, PricesAsOf } from '../../components/ui'
 import { PageHeader } from './PhasePlaceholder'
 import type { TabId } from '../nav'
 import { useAlerts } from '../../lib/useAlerts'
@@ -24,6 +24,8 @@ import { factorExposure, exposureNarrative } from '../../lib/finance/exposure'
 import { DashboardHero } from './DashboardHero'
 import { AdvisorPanel } from './AdvisorPanel'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
+import { useAlpha } from '../alpha/useAlpha'
+import { AlphaMeterCompact } from '../alpha/AlphaMeter'
 import { AllocationPie } from '../balance/AllocationPie'
 
 const SIMS = 3000
@@ -40,7 +42,8 @@ function ageFromDob(dob: string | null | undefined): number | null {
  * Risk tab). Nothing is re-implemented here (invariant #1). No daily red/green delta.
  */
 export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) {
-  const { data, loading } = useBalanceSheet()
+  const { data, loading, pricing, asOf } = useBalanceSheet()
+  const { alpha, loading: alphaLoading } = useAlpha(data.holdings, data.quotes)
   const { open: openAlerts } = useAlerts()
   const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
   const [uniRows, setUniRows] = useState<UniverseRow[]>([])
@@ -151,7 +154,10 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
 
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader title="Dashboard" />
+      <div className="flex items-center justify-between">
+        <PageHeader title="Dashboard" />
+        <PricesAsOf asOf={asOf} pricing={pricing} />
+      </div>
 
       {/* Calm digest pointer — the delivered (persisted) alerts, sparse (#7) */}
       <DashboardDigestStrip alerts={openAlerts} onNavigate={onNavigate} />
@@ -190,6 +196,13 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
           </div>
         </div>
       </Panel>
+
+      {/* Realized selection alpha — measurement of what happened, never a
+          forecast of what will outperform (invariant #5). Sits below the hero:
+          it informs, it isn't the thing you steer by. */}
+      <div className="mt-5">
+        <AlphaMeterCompact alpha={alpha} loading={loading || alphaLoading} />
+      </div>
 
       {empty ? (
         <Panel className="mt-5">

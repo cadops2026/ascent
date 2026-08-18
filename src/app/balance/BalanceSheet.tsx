@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../auth/AuthProvider'
-import { Panel, Figure, MicroLabel, AlertStrip, Input, Button } from '../../components/ui'
+import { Panel, Figure, MicroLabel, AlertStrip, Input, Button, PricesAsOf } from '../../components/ui'
 import { PageHeader } from '../tabs/PhasePlaceholder'
 import { fmtMoneyCompact } from '../../lib/format'
-import { computeBalanceSheet, holdingValue } from '../../lib/finance/networth'
+import { computeBalanceSheet } from '../../lib/finance/networth'
 import type { FilingStatus } from '../../lib/db'
 import { useBalanceSheet } from './useBalanceSheet'
+import { useAlpha } from '../alpha/useAlpha'
+import { AlphaMeterPanel } from '../alpha/AlphaMeter'
+import { refreshHoldingQuotes, resetAutoRefresh } from '../../lib/finance/quotes'
 import { AllocationPie } from './AllocationPie'
 import { NetToHeirsCard } from './NetToHeirsCard'
 import { ImportSection } from './ImportSection'
@@ -39,7 +42,8 @@ const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim
 export function BalanceSheet() {
   const { session } = useAuth()
   const userId = session?.user.id ?? ''
-  const { data, loading, error, reload } = useBalanceSheet()
+  const { data, loading, pricing, asOf, error, reload } = useBalanceSheet()
+  const { alpha, loading: alphaLoading } = useAlpha(data.holdings, data.quotes)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
   const autoRefreshed = useRef(false)
@@ -55,35 +59,15 @@ export function BalanceSheet() {
     await reload()
   }
 
+  // Explicit "Refresh quotes" — same path the auto-refresh uses, minus the
+  // once-per-TTL throttle, since the user asked for it directly.
   const refreshQuotes = async () => {
     setRefreshing(true)
     setRefreshNote(null)
-    const tickers = data.holdings.filter((h) => h.entry_mode === 'shares' && h.symbol)
-    // 'cash' covers money-market funds held as shares (e.g. VMFXX) — they have a
-    // NAV ticker and must be priced like equities, not skipped as plain cash.
-    // Composition-priced holdings (529s) add their underlying ETF legs (VTI/VXUS/VUG).
-    const basketSyms = data.holdings.flatMap(
-      (h) => ((h.synthetic_basket as { symbol: string }[] | null) ?? []).map((l) => l.symbol.toUpperCase()),
-    )
-    const equities = [
-      ...new Set([
-        ...tickers
-          .filter((h) => h.kind === 'stock' || h.kind === 'etf' || h.kind === 'cash')
-          .map((h) => h.symbol!.toUpperCase()),
-        ...basketSyms,
-      ]),
-    ]
-    const crypto = tickers.filter((h) => h.kind === 'crypto').map((h) => h.symbol!.toUpperCase())
     try {
-      if (equities.length) {
-        const { error } = await supabase.functions.invoke('refresh-quotes', { body: { symbols: equities } })
-        if (error) throw error
-      }
-      if (crypto.length) {
-        const { error } = await supabase.functions.invoke('refresh-crypto', { body: { symbols: crypto } })
-        if (error) throw error
-      }
-      if (!equities.length && !crypto.length) setRefreshNote('No ticker/share holdings to price.')
+      resetAutoRefresh()
+      const requested = await refreshHoldingQuotes(data.holdings)
+      if (!requested) setRefreshNote('No ticker/share holdings to price.')
       await reload()
     } catch (e) {
       setRefreshNote(`Quote refresh failed: ${e instanceof Error ? e.message : String(e)}`)
@@ -126,33 +110,18 @@ export function BalanceSheet() {
     )
   }
 
-  // Auto-fetch quotes once after load so holdings price without a manual click.
-  // refresh-quotes only fetches symbols whose cached quote is stale, so this is
-  // cheap on repeat mounts; the ref guard prevents a reload→refresh loop. We also
-  // auto-resolve name-only funds in the alias map first, so imported funds that
-  // landed without a ticker price on their own rather than sitting "pending".
+  // Pricing itself is handled by useBalanceSheet (stale quotes re-fetch on any
+  // tab). What's Balance-Sheet-specific is repairing imported funds that landed
+  // name-only: set their ticker from the verified alias map so they can price at
+  // all, rather than sitting "pending" forever. Runs once per mount.
   useEffect(() => {
     if (loading || autoRefreshed.current) return
-    const hasUnpricedSymboled = data.holdings.some(
-      (h) =>
-        h.entry_mode === 'shares' &&
-        h.symbol &&
-        ['stock', 'etf', 'crypto', 'cash'].includes(h.kind) &&
-        holdingValue(h, data.quotes) == null,
-    )
     const hasResolvableNames = data.holdings.some(
       (h) => !h.symbol && h.name && h.entry_mode === 'shares' && FUND_ALIASES[normName(h.name)],
     )
-    // Composition-priced holdings (529s) whose underlying legs aren't cached yet.
-    const hasUnpricedBasket = data.holdings.some(
-      (h) => h.synthetic_basket != null && holdingValue(h, data.quotes) == null,
-    )
-    if (!hasUnpricedSymboled && !hasResolvableNames && !hasUnpricedBasket) return
+    if (!hasResolvableNames) return
     autoRefreshed.current = true
-    void (async () => {
-      if (hasResolvableNames) await resolveFundTickers(true)
-      if (hasUnpricedSymboled || hasUnpricedBasket) await refreshQuotes()
-    })()
+    void resolveFundTickers(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, data.holdings])
 
@@ -170,6 +139,7 @@ export function BalanceSheet() {
       <div className="flex items-center justify-between">
         <PageHeader title="Balance Sheet" />
         <div className="flex items-center gap-4">
+          <PricesAsOf asOf={asOf} pricing={pricing || refreshing} />
           <button
             type="button"
             onClick={() => void resolveFundTickers()}
@@ -212,6 +182,9 @@ export function BalanceSheet() {
         <AllocationPie slices={bs.byClass} investable={bs.investable} pendingQuotes={bs.pendingQuotes} />
         <NetToHeirsCard netWorth={bs.netWorth} filing={filing} onChangeFiling={onChangeFiling} />
       </div>
+
+      {/* Realized selection alpha, with the per-holding detail behind it. */}
+      <AlphaMeterPanel alpha={alpha} loading={loading || alphaLoading} />
 
       <ImportSection userId={userId} reload={reload} />
 
