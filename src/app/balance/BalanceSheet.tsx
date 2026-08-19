@@ -7,8 +7,8 @@ import { fmtMoneyCompact } from '../../lib/format'
 import { computeBalanceSheet } from '../../lib/finance/networth'
 import type { FilingStatus } from '../../lib/db'
 import { useBalanceSheet } from './useBalanceSheet'
-import { useAlpha } from '../alpha/useAlpha'
-import { AlphaMeterPanel } from '../alpha/AlphaMeter'
+import { useYouIndex } from '../alpha/useYouIndex'
+import { YouIndexPanel } from '../alpha/YouIndex'
 import { refreshHoldingQuotes, resetAutoRefresh } from '../../lib/finance/quotes'
 import { AllocationPie } from './AllocationPie'
 import { NetToHeirsCard } from './NetToHeirsCard'
@@ -43,7 +43,7 @@ export function BalanceSheet() {
   const { session } = useAuth()
   const userId = session?.user.id ?? ''
   const { data, loading, pricing, asOf, error, reload } = useBalanceSheet()
-  const { alpha, loading: alphaLoading } = useAlpha(data.holdings, data.quotes)
+  const yi = useYouIndex(data.holdings, data.quotes)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
   const autoRefreshed = useRef(false)
@@ -183,8 +183,8 @@ export function BalanceSheet() {
         <NetToHeirsCard netWorth={bs.netWorth} filing={filing} onChangeFiling={onChangeFiling} />
       </div>
 
-      {/* Realized selection alpha, with the per-holding detail behind it. */}
-      <AlphaMeterPanel alpha={alpha} loading={loading || alphaLoading} />
+      {/* Your holdings as one index line vs the market. */}
+      <YouIndexPanel index={yi.index} period={yi.period} onPeriod={yi.setPeriod} loading={loading || yi.loading} />
 
       <ImportSection userId={userId} reload={reload} />
 

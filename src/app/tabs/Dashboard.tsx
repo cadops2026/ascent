@@ -24,8 +24,8 @@ import { factorExposure, exposureNarrative } from '../../lib/finance/exposure'
 import { DashboardHero } from './DashboardHero'
 import { AdvisorPanel } from './AdvisorPanel'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
-import { useAlpha } from '../alpha/useAlpha'
-import { AlphaMeterCompact } from '../alpha/AlphaMeter'
+import { useYouIndex } from '../alpha/useYouIndex'
+import { YouIndexPanel } from '../alpha/YouIndex'
 import { AllocationPie } from '../balance/AllocationPie'
 
 const SIMS = 3000
@@ -43,7 +43,7 @@ function ageFromDob(dob: string | null | undefined): number | null {
  */
 export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) {
   const { data, loading, pricing, asOf } = useBalanceSheet()
-  const { alpha, loading: alphaLoading } = useAlpha(data.holdings, data.quotes)
+  const yi = useYouIndex(data.holdings, data.quotes)
   const { open: openAlerts } = useAlerts()
   const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
   const [uniRows, setUniRows] = useState<UniverseRow[]>([])
@@ -197,11 +197,10 @@ export function Dashboard({ onNavigate }: { onNavigate?: (id: TabId) => void }) 
         </div>
       </Panel>
 
-      {/* Realized selection alpha — measurement of what happened, never a
-          forecast of what will outperform (invariant #5). Sits below the hero:
-          it informs, it isn't the thing you steer by. */}
+      {/* Your holdings as one index line vs the market. Measurement, never a
+          forecast of what will outperform (invariant #5). */}
       <div className="mt-5">
-        <AlphaMeterCompact alpha={alpha} loading={loading || alphaLoading} />
+        <YouIndexPanel index={yi.index} period={yi.period} onPeriod={yi.setPeriod} loading={loading || yi.loading} />
       </div>
 
       {empty ? (
