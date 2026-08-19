@@ -32,12 +32,30 @@ gate) and `evaluate_alerts_cron_secret`. `CRON_SECRET` is set in Supabase secret
 cron — a broken body is invisible until the schedule fires:
 `select net.http_post(...)` then `select status_code, content from net._http_response`.
 
-### evaluate-alerts is deployed but will do nothing yet
-Live counts: `alert_rules = 0`, `alerts = 0`, `target_allocation = 0`, `holdings = 84`.
-Nobody has opted in (an `alert_rules` row is created by setting thresholds in the Risk
-tab), so the monthly job evaluates zero users by design. That is correct behavior, not
-a failure — but do not read a `{"evaluated":0}` response as proof the pipeline works
-end-to-end on real data. It has never yet run against a user with rules.
+### evaluate-alerts VERIFIED end-to-end on real data (2026-08-19)
+Thresholds were written for the main account (`2d025304…`, 80 holdings) using the Risk
+tab's own defaults — band 5pt, single-name 10%, narrative 20%, monthly — matching
+exactly what `RiskExposureTab` upserts on Save. `target_allocation` was deliberately
+NOT set: choosing a target mix is a portfolio decision for the owner (invariant #5),
+so rebalance-drift alerts stay dormant until they set one.
+
+Full run through the real cron path: `{"evaluated":1,"inserted":1,"resolved":0}`.
+
+The alert raised was `tax_params_stale`, and it is **true** — `tax_parameters` holds 0
+rows, so 2026 brackets/IRMAA/RMD/estate figures are genuinely unset and the tax,
+withdrawal, and estate tabs are running on seeded defaults. Worth fixing in Settings.
+
+The alerts that stayed silent were also correct, checked against independent SQL:
+- `single_name` — top look-through name is AAPL at **4.86%** of investable (NVDA 4.19%,
+  MSFT 2.30%), under the 10% ceiling. The index-fund stack is less concentrated than it
+  looks from the fund level (largest single FUND is VIGAX at 11.1%).
+- `narrative` — crypto is **3.0%**, under the 20% ceiling.
+- `rebalance_band` — no `target_allocation` rows, so there is nothing to drift from.
+
+Dedupe confirmed: an immediate second run returned `{"evaluated":1,"inserted":0}` —
+it re-evaluated and correctly declined to re-nag inside the cadence window.
+
+The function writes ONLY to the `alerts` table — no email, webhook, or external send.
 
 The function writes ONLY to the `alerts` table — no email, webhook, or external send.
 
