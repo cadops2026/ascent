@@ -6,6 +6,19 @@ import type { Holding } from '../db'
 /** symbol (UPPERCASE) -> (YYYY-MM-DD -> close) */
 export type PriceHistory = Record<string, Record<string, number>>
 
+/**
+ * The ticker daily history is stored under, which is NOT always the ticker the
+ * holding uses. Crypto needs Yahoo's `-USD` pair: bare "BTC" on Yahoo is the
+ * Grayscale Bitcoin Mini Trust ETF (~$28), not bitcoin (~$64k) — and it returns
+ * data happily rather than erroring, so an unmapped crypto symbol silently
+ * prices a completely different instrument.
+ */
+export function historySymbol(h: Pick<Holding, 'kind' | 'symbol'>): string {
+  const s = (h.symbol ?? '').toUpperCase()
+  if (!s) return s
+  return h.kind === 'crypto' && !s.endsWith('-USD') ? `${s}-USD` : s
+}
+
 export interface IndexPoint {
   date: string
   /** Cumulative return since the period start, as a fraction (0.12 = +12%). */
@@ -15,6 +28,8 @@ export interface IndexPoint {
 
 export interface YouIndex {
   points: IndexPoint[]
+  /** True when the last point is today's live price rather than a daily close. */
+  live: boolean
   /** Headline return over the whole period. */
   you: number
   bench: number
@@ -24,6 +39,8 @@ export interface YouIndex {
   coveredValue: number
   skipped: number
 }
+
+const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 
 /** Sorted [date, close] pairs, so the index walk is a linear merge, not a scan. */
 type Series = { dates: string[]; closes: number[] }
@@ -56,10 +73,11 @@ export function buildYouIndex(
   benchmark: string,
   fromDate: string,
   quotes: Record<string, number> = {},
+  now: Date = new Date(),
 ): YouIndex {
   const bench = toSeries(history[benchmark.toUpperCase()])
   const empty: YouIndex = {
-    points: [], you: 0, bench: 0, benchmark, covered: 0, coveredValue: 0, skipped: 0,
+    points: [], live: false, you: 0, bench: 0, benchmark, covered: 0, coveredValue: 0, skipped: 0,
   }
   if (!bench) return empty
 
@@ -71,7 +89,8 @@ export function buildYouIndex(
   const basket: { shares: number; series: Series; cursor: { i: number }; symbol: string }[] = []
   let skipped = 0
   for (const h of candidates) {
-    const s = toSeries(history[h.symbol!.toUpperCase()])
+    // History is keyed by the vendor ticker; live quotes by the holding's own.
+    const s = toSeries(history[historySymbol(h)])
     if (!s || s.dates[0]! > fromDate) {
       skipped++
       continue
@@ -102,9 +121,36 @@ export function buildYouIndex(
     points.push({ date, you: value / base - 1, bench: bp / baseBench - 1 })
   }
 
+  // Live tail: daily closes stop at the last session, but the rest of the app
+  // re-prices every 15 minutes. Extend the line to right now using the quote
+  // cache so the two don't disagree. Only when EVERY leg has a live price —
+  // a partial basket would understate the value and read as a fake drop.
+  let live = false
+  const benchNow = quotes[benchmark.toUpperCase()]
+  if (benchNow != null && benchNow > 0 && base > 0) {
+    let v = 0
+    let ok = true
+    for (const b of basket) {
+      const p = quotes[b.symbol]
+      if (p == null || p <= 0) { ok = false; break }
+      v += b.shares * p
+    }
+    if (ok && v > 0) {
+      const today = isoDay(now.getTime())
+      const point = { date: today, you: v / base - 1, bench: benchNow / baseBench - 1 }
+      if (points.length && points[points.length - 1]!.date === today) {
+        points[points.length - 1] = point // today's close already in — live wins
+      } else {
+        points.push(point)
+      }
+      live = true
+    }
+  }
+
   const last = points[points.length - 1]
   return {
     points,
+    live,
     you: last?.you ?? 0,
     bench: last?.bench ?? 0,
     benchmark,

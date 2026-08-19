@@ -100,7 +100,8 @@ export function YouIndexPanel({
           </div>
 
           <p className="mt-3 text-sm text-faint">
-            Your {index.covered} priced holdings at today's share counts, versus {index.benchmark}.
+            Your {index.covered} priced holdings at today's share counts, versus {index.benchmark}
+            {index.live ? ', current to the last price refresh' : ', through the last daily close'}.
             Shows how what you hold now would have tracked — not a record of your past trades.
             {index.skipped > 0 && ` ${index.skipped} without full history left out.`}
           </p>

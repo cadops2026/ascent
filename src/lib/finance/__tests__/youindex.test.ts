@@ -50,3 +50,49 @@ test('holdings without history for the whole window are left out, not faked', ()
 test('YTD anchors to Jan 1', () => {
   assert.equal(periodStart('YTD', new Date('2026-08-18T00:00:00Z')), '2026-01-01')
 })
+
+test('live quotes extend the line past the last daily close', () => {
+  // History ends 01-02 at $12; the live quote says $15 right now.
+  // Basket base = 10 (01-01). Live => 15/10 - 1 = +50%, vs close-only +20%.
+  const history: PriceHistory = {
+    A: { '2026-01-01': 10, '2026-01-02': 12 },
+    SPY: { '2026-01-01': 100, '2026-01-02': 100 },
+  }
+  const now = new Date('2026-01-03T18:00:00Z')
+
+  const closeOnly = buildYouIndex([h('A', 1)], history, 'SPY', '2026-01-01', {}, now)
+  assert.equal(closeOnly.live, false)
+  assert.ok(Math.abs(closeOnly.you - 0.2) < 1e-9, `close ${closeOnly.you}`)
+
+  const withLive = buildYouIndex([h('A', 1)], history, 'SPY', '2026-01-01', { A: 15, SPY: 110 }, now)
+  assert.equal(withLive.live, true)
+  assert.equal(withLive.points.length, 3) // 01-01, 01-02, plus today
+  assert.ok(Math.abs(withLive.you - 0.5) < 1e-9, `live ${withLive.you}`)
+  assert.ok(Math.abs(withLive.bench - 0.1) < 1e-9, `bench ${withLive.bench}`)
+})
+
+test('a partial basket does not get a live point (would read as a fake drop)', () => {
+  const history: PriceHistory = {
+    A: { '2026-01-01': 10, '2026-01-02': 12 },
+    B: { '2026-01-01': 10, '2026-01-02': 12 },
+    SPY: { '2026-01-01': 100, '2026-01-02': 100 },
+  }
+  // Only A has a live quote; B is missing -> no live tail at all.
+  const r = buildYouIndex([h('A', 1), h('B', 1)], history, 'SPY', '2026-01-01',
+    { A: 15, SPY: 110 }, new Date('2026-01-03T18:00:00Z'))
+  assert.equal(r.live, false)
+  assert.equal(r.points.length, 2)
+})
+
+test('crypto history reads the -USD pair, not the same-named ETF', () => {
+  // Yahoo's bare "BTC" is the Grayscale Mini Trust (~$28), not bitcoin (~$64k).
+  const btc = { id: 'x', symbol: 'BTC', kind: 'crypto', entry_mode: 'shares', shares: 1 } as unknown as Holding
+  const history: PriceHistory = {
+    'BTC-USD': { '2026-01-01': 60000, '2026-01-02': 66000 },
+    BTC: { '2026-01-01': 28, '2026-01-02': 28 }, // the wrong instrument, must be ignored
+    SPY: { '2026-01-01': 100, '2026-01-02': 100 },
+  }
+  const r = buildYouIndex([btc], history, 'SPY', '2026-01-01')
+  assert.equal(r.covered, 1)
+  assert.ok(Math.abs(r.you - 0.1) < 1e-9, `you ${r.you}`) // 66000/60000 - 1, not 0%
+})
