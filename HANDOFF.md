@@ -1,3 +1,64 @@
+# HANDOFF — state as of 2026-08-19 (You Index; production URL corrected)
+
+## ⚠️ CORRECTION — the "Vercel isn't shipping" issue below is WRONG and cost hours
+Vercel has been building and deploying **every** commit fine. Verified via
+`gh api repos/cadops2026/ascent/deployments`: production deployments exist for
+2026-08-14 and 2026-08-19 commits, all `state=success`.
+
+**The real problem is the URL.** `https://ascent-umber.vercel.app` is a STALE ALIAS
+permanently stuck on the first build (`index-mOJmIHc9.js`). It is not attached to this
+project's deployments and will never update.
+
+- **Live production is `https://ascent-cadops1.vercel.app`** — confirmed serving the
+  current bundle, with the You Index strings present in the `AllocationPie-*` chunk.
+- To reclaim the old URL: Vercel dashboard → ascent → Settings → Domains → remove or
+  reassign `ascent-umber`. Needs dashboard access; not doable from the CLI here (the
+  `vercel` CLI is not installed and `VERCEL_OIDC_TOKEN` in `.env.local` is expired and
+  wrong-scoped).
+- Do **not** re-diagnose this as "Vercel is stuck." Check `gh api .../deployments` first.
+
+## ⚠️ Local dev: vite was binding IPv6-only
+`vite.config.ts` now sets `server.host: '0.0.0.0'`. Default binds "localhost", which
+resolved to `::1` ONLY — `lsof` showed `TCP [::1]:5173 (LISTEN)` and
+`http://127.0.0.1:5173` returned connection refused while `[::1]` returned 200. Any
+browser resolving localhost to IPv4 saw a dead port. Symptom looks exactly like "the
+app never updated." Check the bind with `lsof -nP -iTCP:5173 -sTCP:LISTEN` before
+assuming a code problem.
+
+## You Index replaced the per-holding alpha meter (owner decision 2026-08-19)
+The statistical version (per-lot alpha, tracking-error noise bands, ahead/behind
+verdicts, exclusion lists) was more machinery than the question needed. Now: your
+holdings as one index line vs SPY, two numbers, one chart, 1M/3M/YTD/1Y.
+
+- `src/lib/finance/youindex.ts` — basket from CURRENT share counts × daily closes,
+  normalized to zero at period start, walked as a linear merge over the benchmark's
+  calendar with forward-fill (so weekend-trading assets and ETFs share one calendar).
+  Holdings without history covering the whole window are excluded, not joined
+  mid-chart (which would draw a jump that isn't a return).
+- Needs no tax lots — that's why it works where the alpha meter would have shown 0%
+  coverage on statement-imported holdings.
+- **Live tail:** the last point comes from `quote_cache` (15-min), not the last daily
+  close, so it doesn't disagree with the rest of the app. All-or-nothing: it needs a
+  live price for every leg, or a partial basket would draw a fake drop. SPY gets its
+  own live quote. `index.live` says which mode the caption is in.
+
+### ⚠️ Vendor tickers ≠ holding tickers (silent-corruption trap)
+`historySymbol()` maps crypto to Yahoo's `-USD` pair. Yahoo's bare **`BTC` is the
+Grayscale Bitcoin Mini Trust ETF (~$28), not bitcoin (~$64k)** — and it returns data
+with `missing:[]` rather than erroring, so an unmapped crypto symbol silently prices a
+completely different instrument. `price_history` is keyed by the VENDOR ticker;
+`quote_cache` by the holding's. Do not conflate them. (Stale bogus `symbol='BTC'` rows
+from testing exist in `price_history`; harmless since nothing reads that key now, but
+delete them if you ever get service-role access.)
+
+### Refresh cadence (asked 2026-08-19)
+- Daily history: fetched **once per page load** (module flag in `useYouIndex`), and the
+  Edge Function no-ops per symbol if it already holds a close from the last 24h.
+- Live prices: 15-min TTL, staleness-triggered, app-wide via `useBalanceSheet`.
+- There is **no cron** for `price_history` — nothing updates while the app sits open.
+
+---
+
 # HANDOFF — state as of 2026-08-17 (live pricing + alpha meter)
 
 ## 1. Prices now refresh app-wide, not just on the Balance Sheet
