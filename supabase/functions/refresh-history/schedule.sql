@@ -6,7 +6,7 @@
 --   1. supabase functions deploy refresh-history
 --   2. Enable extensions (idempotent statements below).
 --   3. Mirror the project's anon key into Vault so this file holds no key:
---        select vault.create_secret('<anon key>', 'refresh_history_anon_key');
+--        select vault.create_secret('<anon key>', 'project_anon_key');
 --      The anon key is public by design (it ships in the client bundle; RLS is
 --      what protects data) — Vault is used here for tidiness, not secrecy.
 
@@ -33,10 +33,10 @@ select cron.schedule(
       'Content-Type', 'application/json',
       'apikey',
         (select decrypted_secret from vault.decrypted_secrets
-         where name = 'refresh_history_anon_key'),
+         where name = 'project_anon_key'),
       'Authorization',
         'Bearer ' || (select decrypted_secret from vault.decrypted_secrets
-                      where name = 'refresh_history_anon_key')
+                      where name = 'project_anon_key')
     ),
     body := jsonb_build_object(
       'symbols', (select jsonb_agg(distinct symbol) from public.price_history),

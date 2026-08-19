@@ -1,3 +1,48 @@
+# HANDOFF — state as of 2026-08-19 (both crons live)
+
+## Scheduled jobs — BOTH now active on the live project
+`pg_cron` + `pg_net` were NOT enabled before today; enabling them was the missing
+prerequisite for every scheduled job. Check with:
+`select extname from pg_extension where extname in ('pg_cron','pg_net');`
+
+| job | schedule | what it does |
+|---|---|---|
+| `refresh-history-daily` | `0 23 * * *` | tops up `price_history` for every tracked symbol |
+| `evaluate-alerts-monthly` | `0 13 1 * *` | evaluates opted-in users, writes to `alerts` |
+
+Inspect: `select jobid, jobname, schedule, active from cron.job;`
+Runs: `select * from cron.job_run_details order by start_time desc limit 5;`
+
+### ⚠️ Edge-function crons need TWO headers, not one
+The original `evaluate-alerts/schedule.sql` sent only `x-cron-secret` and **would have
+failed silently on every run**. The Supabase PLATFORM rejects a function call with no
+auth header before the function ever executes:
+`401 {"code":"UNAUTHORIZED_NO_AUTH_HEADER"}`. Verified all three cases:
+
+- `x-cron-secret` only → 401 UNAUTHORIZED_NO_AUTH_HEADER (platform)
+- anon key + wrong secret → 401 `{"error":"unauthorized"}` (function gate works)
+- anon key + correct secret → 200 `{"evaluated":0,...}`
+
+Both schedule files now send `apikey` + `Authorization: Bearer <anon>` **and**, where
+the function gates on it, `x-cron-secret`. Vault holds `project_anon_key` (shared, the
+public anon key — it only satisfies the platform header; the cron secret is the real
+gate) and `evaluate_alerts_cron_secret`. `CRON_SECRET` is set in Supabase secrets.
+
+**Always fire the job body manually after scheduling** rather than waiting for the
+cron — a broken body is invisible until the schedule fires:
+`select net.http_post(...)` then `select status_code, content from net._http_response`.
+
+### evaluate-alerts is deployed but will do nothing yet
+Live counts: `alert_rules = 0`, `alerts = 0`, `target_allocation = 0`, `holdings = 84`.
+Nobody has opted in (an `alert_rules` row is created by setting thresholds in the Risk
+tab), so the monthly job evaluates zero users by design. That is correct behavior, not
+a failure — but do not read a `{"evaluated":0}` response as proof the pipeline works
+end-to-end on real data. It has never yet run against a user with rules.
+
+The function writes ONLY to the `alerts` table — no email, webhook, or external send.
+
+---
+
 # HANDOFF — state as of 2026-08-19 (You Index; production URL corrected)
 
 ## ⚠️ CORRECTION — the "Vercel isn't shipping" issue below is WRONG and cost hours
