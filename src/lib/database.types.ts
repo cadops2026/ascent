@@ -204,6 +204,30 @@ export type Database = {
         }
         Relationships: []
       }
+      dividend_cache: {
+        Row: {
+          annual_amount: number | null
+          source: string | null
+          symbol: string
+          trailing_yield: number | null
+          updated_at: string
+        }
+        Insert: {
+          annual_amount?: number | null
+          source?: string | null
+          symbol: string
+          trailing_yield?: number | null
+          updated_at?: string
+        }
+        Update: {
+          annual_amount?: number | null
+          source?: string | null
+          symbol?: string
+          trailing_yield?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       estate_docs: {
         Row: {
           created_at: string

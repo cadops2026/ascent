@@ -48,6 +48,30 @@ select cron.schedule(
   $$
 );
 
+-- Dividend yields, same daily cadence — they move slowly, and the function
+-- skips any symbol refreshed within 24h. Symbol list comes from the holdings
+-- that actually have tickers.
+select cron.schedule(
+  'refresh-dividends-daily',
+  '30 23 * * *',
+  $$
+  select net.http_post(
+    url := 'https://rhpdjuigivbwfvzoljsa.supabase.co/functions/v1/refresh-dividends',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'apikey',
+        (select decrypted_secret from vault.decrypted_secrets where name = 'project_anon_key'),
+      'Authorization',
+        'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'project_anon_key')
+    ),
+    body := jsonb_build_object(
+      'symbols', (select jsonb_agg(distinct upper(symbol)) from public.holdings where symbol is not null)
+    ),
+    timeout_milliseconds := 180000
+  );
+  $$
+);
+
 -- Manage:
 --   select jobid, jobname, schedule, active from cron.job;
 --   select * from cron.job_run_details order by start_time desc limit 5;

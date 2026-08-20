@@ -21,12 +21,15 @@ import { TaxPanels } from './TaxPanels'
 import { TaxLotsEditor } from './TaxLotsEditor'
 import { WithdrawalPlanner } from './WithdrawalPlanner'
 import { useBalanceSheet } from '../balance/useBalanceSheet'
+import { useDividends } from './useDividends'
+import { AssetLocationPanel } from './AssetLocationPanel'
 import { useTaxParams } from '../../lib/useTaxParams'
 import { useAuth } from '../../auth/AuthProvider'
 
 
 export function TaxWithdrawalTab() {
   const { data, loading } = useBalanceSheet()
+  const { yields, loading: divLoading } = useDividends(data.holdings)
   const { session } = useAuth()
   const { params: taxParams } = useTaxParams()
   const [cmaRows, setCmaRows] = useState<CmaSourceRow[]>([])
@@ -130,6 +133,15 @@ export function TaxWithdrawalTab() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <PageHeader title="Tax & Withdrawal" />
+
+      {/* Which holdings suit a taxable account — ranks and flags, never moves. */}
+      <AssetLocationPanel
+        holdings={data.holdings}
+        accounts={data.accounts}
+        quotes={data.quotes}
+        yields={yields}
+        loading={loading || divLoading}
+      />
 
       {empty ? (
         <Panel>
