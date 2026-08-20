@@ -11,6 +11,7 @@
 // exists to show what you're exposed to, and hiding dividend payers from it
 // would understate real concentration.
 import type { Holding, Account, TaxType } from '../db'
+import { historySymbol } from './youindex'
 import { holdingValue } from './networth'
 import type { QuoteMap } from './networth'
 
@@ -45,11 +46,33 @@ export function isTaxExempt(h: Pick<Holding, 'name' | 'symbol'>): boolean {
   return /tax[\s-]?exempt|municipal|\bmuni\b/.test(n)
 }
 
+/**
+ * Money-market and cash-equivalent funds. These throw off FULLY TAXABLE
+ * ORDINARY income — the worst kind — and they are the trap in a yield-ranked
+ * list: the price feeds publish no dividend events for them (Yahoo returns
+ * `instrumentType: MONEYMARKET` with zero dividends against a fixed $1 NAV), so
+ * a naive trailing-yield calculation scores them 0.00% and ranks them as the
+ * BEST thing to hold in taxable. They are close to the worst.
+ *
+ * We do not invent a yield for them — the feed genuinely does not carry one —
+ * but we refuse to let a missing number read as "tax-efficient".
+ */
+export function isOrdinaryIncome(h: Pick<Holding, 'kind' | 'name'>): boolean {
+  const n = (h.name ?? '').toLowerCase()
+  return h.kind === 'cash' || /money market|cash reserves|treasury (money|reserve)/.test(n)
+}
+
+/** Crypto pays no dividends AND generally cannot sit in a tax-deferred account,
+ *  so ranking it "best for taxable" is noise — there is no decision to make. */
+export const isUnshelterable = (h: Pick<Holding, 'kind'>) => h.kind === 'crypto'
+
 export type Placement =
   | 'good-in-taxable'
   | 'better-sheltered'
   | 'already-sheltered'
   | 'tax-exempt'
+  | 'ordinary-income'
+  | 'not-shelterable'
   | 'unknown'
 
 export interface LocationRow {
@@ -106,12 +129,16 @@ export function assetLocation(
     const taxType = acct?.tax_type ?? null
     const sheltered = isSheltered(taxType)
 
-    const y = h.symbol ? yields[h.symbol.toUpperCase()] : undefined
+    const y = h.symbol ? (yields[historySymbol(h)] ?? yields[h.symbol.toUpperCase()]) : undefined
     const yieldPct = y ?? null
     const taxExempt = isTaxExempt(h)
 
     let placement: Placement
     if (taxExempt) placement = 'tax-exempt' // belongs in taxable regardless of yield
+    else if (isUnshelterable(h)) placement = 'not-shelterable'
+    // Checked BEFORE the yield tests: a 0.00% money market must never fall
+    // through to 'good-in-taxable'.
+    else if (isOrdinaryIncome(h)) placement = sheltered ? 'already-sheltered' : 'ordinary-income'
     else if (yieldPct == null) placement = 'unknown'
     else if (sheltered) placement = 'already-sheltered'
     else if (yieldPct > threshold) placement = 'better-sheltered'
@@ -133,7 +160,14 @@ export function assetLocation(
     })
   }
 
-  const known = rows.filter((r) => r.yieldPct != null)
+  // Only holdings where a low yield genuinely means tax-efficient. Money-market
+  // funds (yield missing from the feed) and crypto (nothing to decide) are out.
+  const known = rows.filter(
+    (r) =>
+      r.yieldPct != null &&
+      r.placement !== 'ordinary-income' &&
+      r.placement !== 'not-shelterable',
+  )
 
   return {
     // Lowest TAXABLE yield first; ties broken by size, since a big low-yield
@@ -145,9 +179,17 @@ export function assetLocation(
         (a, b) =>
           (a.taxExempt ? 0 : a.yieldPct!) - (b.taxExempt ? 0 : b.yieldPct!) || b.value - a.value,
       ),
+    // Ordinary-income holdings lead: fully-taxable interest is worse per dollar
+    // than qualified dividends, and we have no yield figure to sort them by, so
+    // size is the honest proxy.
     misplaced: rows
-      .filter((r) => r.placement === 'better-sheltered')
-      .sort((a, b) => b.annualIncome - a.annualIncome),
+      .filter((r) => r.placement === 'better-sheltered' || r.placement === 'ordinary-income')
+      .sort((a, b) => {
+        const ao = a.placement === 'ordinary-income' ? 1 : 0
+        const bo = b.placement === 'ordinary-income' ? 1 : 0
+        if (ao !== bo) return bo - ao
+        return ao ? b.value - a.value : b.annualIncome - a.annualIncome
+      }),
     taxableIncome: rows
       .filter((r) => !isSheltered(r.taxType))
       .reduce((s, r) => s + r.annualIncome, 0),

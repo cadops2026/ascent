@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Holding } from '../../lib/db'
 import type { YieldMap } from '../../lib/finance/assetlocation'
+import { historySymbol } from '../../lib/finance/youindex'
 
 // Once-per-load, shared across tabs — same guard the other refreshers use.
 let requested = false
@@ -13,7 +14,8 @@ export function useDividends(holdings: Holding[]) {
 
   const symbols = useMemo(() => {
     const s = new Set<string>()
-    for (const h of holdings) if (h.symbol) s.add(h.symbol.toUpperCase())
+    // Vendor ticker, not the holding's — bare 'BTC' is a Grayscale ETF on Yahoo.
+    for (const h of holdings) if (h.symbol) s.add(historySymbol(h))
     return [...s]
   }, [holdings])
 

@@ -11,7 +11,8 @@ import type { QuoteMap } from '../../lib/finance/networth'
 const TOP_N = 20
 
 function Row({ r }: { r: LocationRow }) {
-  const flagged = r.placement === 'better-sheltered'
+  const flagged = r.placement === 'better-sheltered' || r.placement === 'ordinary-income'
+  const ordinary = r.placement === 'ordinary-income'
   return (
     <div className="flex items-baseline gap-3 border-t border-line py-2 text-sm first:border-t-0">
       <span className="min-w-0 flex-1 truncate text-ink">{r.label}</span>
@@ -20,11 +21,13 @@ function Row({ r }: { r: LocationRow }) {
       </span>
       <span className="tnum w-20 text-right font-mono text-faint">{fmtMoneyCompact(r.value)}</span>
       <span className={`tnum w-16 text-right font-mono ${flagged ? 'text-amber' : 'text-muted'}`}>
-        {r.yieldPct == null ? '—' : fmtPct(r.yieldPct, 2)}
+        {ordinary ? 'ord.' : r.yieldPct == null ? '—' : fmtPct(r.yieldPct, 2)}
       </span>
       <span className="tnum hidden w-20 text-right font-mono text-faint sm:inline">
         {r.taxExempt ? (
           <span className="text-teal">tax-free</span>
+        ) : ordinary ? (
+          <span className="text-amber">ordinary</span>
         ) : r.annualIncome > 0 ? (
           `${fmtMoney(r.annualIncome)}/yr`
         ) : (

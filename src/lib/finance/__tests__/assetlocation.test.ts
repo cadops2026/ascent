@@ -101,3 +101,49 @@ test('tax-exempt detection matches the phrasings statements actually use', () =>
   assert.equal(isTaxExempt({ name: 'Vanguard Tax-Managed Capital Appreciation', symbol: 'VTCLX' }), false)
   assert.equal(isTaxExempt({ name: 'Vanguard Total Stock Market Index', symbol: 'VTSAX' }), false)
 })
+
+test('a money market fund is never "best for taxable" despite a 0.00% feed yield', () => {
+  // The real failure: VMFXX ($150k) topped the best-for-taxable list because
+  // Yahoo publishes no dividend events for MONEYMARKET instruments. Its income
+  // is fully taxable ordinary interest — close to the worst thing to hold here.
+  const mm = { id: 'mm', symbol: 'VMFXX', name: 'VANGUARD FEDERAL MONEY MARKET FUND',
+    kind: 'cash', entry_mode: 'shares', shares: 150000, account_id: 'tax',
+    manual_amount: null, synthetic_basket: null } as unknown as Holding
+  const r = assetLocation([mm, hold('b', 'LOW', 10, 'tax')], accounts,
+    { VMFXX: 1, LOW: 100 }, { VMFXX: 0, LOW: 0.002 })
+
+  assert.equal(r.bestForTaxable.find((x) => x.symbol === 'VMFXX'), undefined,
+    'money market must be excluded from best-for-taxable')
+  assert.equal(r.bestForTaxable[0]!.symbol, 'LOW')
+  // It surfaces as something to move, and leads on size.
+  assert.equal(r.misplaced[0]!.symbol, 'VMFXX')
+  assert.equal(r.misplaced[0]!.placement, 'ordinary-income')
+})
+
+test('a money market inside an IRA is already sheltered, not flagged', () => {
+  const mm = { id: 'mm', symbol: 'VMFXX', name: 'Vanguard Federal Money Market Fund',
+    kind: 'cash', entry_mode: 'shares', shares: 1000, account_id: 'ira',
+    manual_amount: null, synthetic_basket: null } as unknown as Holding
+  const r = assetLocation([mm], accounts, { VMFXX: 1 }, { VMFXX: 0 })
+  assert.equal(r.misplaced.length, 0)
+})
+
+test('crypto is excluded — no dividends, and nothing to shelter it in', () => {
+  const btc = { id: 'c', symbol: 'BTC', name: 'Bitcoin', kind: 'crypto',
+    entry_mode: 'shares', shares: 1, account_id: 'tax', manual_amount: null,
+    synthetic_basket: null } as unknown as Holding
+  const r = assetLocation([btc, hold('b', 'LOW', 10, 'tax')], accounts,
+    { BTC: 112137, LOW: 100 }, { BTC: 0, LOW: 0.002 })
+  assert.equal(r.bestForTaxable.find((x) => x.symbol === 'BTC'), undefined)
+  assert.equal(r.misplaced.find((x) => x.symbol === 'BTC'), undefined)
+})
+
+test('ordinary-income holdings sort ahead of dividend payers in the move list', () => {
+  const mm = { id: 'mm', symbol: 'VMFXX', name: 'Vanguard Federal Money Market',
+    kind: 'cash', entry_mode: 'shares', shares: 150000, account_id: 'tax',
+    manual_amount: null, synthetic_basket: null } as unknown as Holding
+  const reit = hold('r', 'REIT', 100, 'tax') // $10k at 3.5% = $350/yr
+  const r = assetLocation([reit, mm], accounts, { VMFXX: 1, REIT: 100 },
+    { VMFXX: 0, REIT: 0.035 })
+  assert.deepEqual(r.misplaced.map((x) => x.symbol), ['VMFXX', 'REIT'])
+})
