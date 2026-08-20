@@ -1,3 +1,49 @@
+# HANDOFF — state as of 2026-08-19 (asset-location view)
+
+## Asset location — Tax tab (owner decision 2026-08-19)
+Ranks holdings by trailing 12-month dividend yield to answer "what belongs in a taxable
+account". Top 20, settable shelter threshold (default 1%). Two views: *best for taxable*
+(lowest yield first) and *better sheltered* (high-yield positions currently in taxable).
+
+Deliberately a SEPARATE view, not a filter on the look-through top names — that list
+measures concentration, and hiding dividend payers would understate real exposure.
+(The owner originally asked to filter "the top 20 lists"; there was no top-20 list, and
+filtering the risk list would have blinded it.)
+
+### ⚠️ Municipal funds — the trap that makes a naive version harmful
+The first run on real holdings ranked **VNJUX** (Vanguard NJ Long-Term Tax-Exempt, 3.70%,
+$300k, $11.1k/yr) as the #1 "move this to shelter". That is exactly backwards: muni
+income is federally (and for a NJ resident, state) exempt, so sheltering it converts
+tax-free income into eventually-ordinary income. `isTaxExempt()` matches on fund NAME
+(no price feed reports tax treatment), scores taxable yield as zero, and never flags
+them — munis are the BEST thing to hold in taxable.
+
+A test pins that **"Tax-Managed" (VTCLX) is NOT "Tax-Exempt"** — that fund's
+distributions are taxable, and a looser regex would have wrongly exempted it.
+
+Missing dividend data is reported, never treated as zero yield; otherwise unpriced
+holdings would top the best-for-taxable list on no evidence.
+
+After the fix the flagged list is sensible: VTSAX ($5,250/yr), VHYAX ($2,258), VTTVX
+($1,767), VHT ($1,636) — a high-dividend fund and a target-date fund in taxable are the
+textbook cases.
+
+### Data: dividend_cache + refresh-dividends
+`trailing_yield` is a FRACTION, from actual 12-month distributions ÷ current price (what
+hit a 1099), not a forward estimate. **Finnhub covered only 6 of 59 real symbols** — it
+does not cover mutual funds, which are most of this portfolio — so the Yahoo
+dividend-events fallback carried 47. Six unpriced are all crypto (correctly no
+dividends). Same Finnhub-then-Yahoo shape as refresh-quotes.
+
+## Cron jobs now on the project (all verified by firing the body, not by waiting)
+| jobid | job | schedule |
+|---|---|---|
+| 1 | `refresh-history-daily` | `0 23 * * *` |
+| 2 | `evaluate-alerts-monthly` | `0 13 1 * *` |
+| 5 | `refresh-dividends-daily` | `30 23 * * *` |
+
+---
+
 # HANDOFF — state as of 2026-08-19 (both crons live)
 
 ## Scheduled jobs — BOTH now active on the live project
