@@ -142,6 +142,10 @@ export function AssetLocationPanel({
             Ranked by trailing 12-month distributions ÷ current price — what actually hit a 1099,
             not a forward estimate. Municipal funds are marked tax-free and count as zero: their
             income is exempt, so a high yield is a reason to KEEP them here, not shelter them.
+            Money-market and cash funds are marked ordinary and listed to move: the price feeds
+            publish no dividend events for them, so a naive reading scores them 0.00% when their
+            income is fully taxable interest. Crypto is left out entirely — it pays nothing and
+            cannot sit in a tax-deferred account, so there is no placement decision to make.
             Yield is one input to asset location, not the whole decision:
             a fund's capital-gains distributions and your own turnover matter too, and moving a
             position in a taxable account realizes gains. This ranks and flags; it never moves
